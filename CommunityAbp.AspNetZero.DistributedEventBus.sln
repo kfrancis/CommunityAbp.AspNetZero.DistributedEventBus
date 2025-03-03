@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35707.178
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommunityAbp.AspNetZero.DistributedEventBus.Core", "src\CommunityAbp.AspNetZero.DistributedEventBus.Core\CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj", "{35183364-5FE2-4A6D-AB8E-0EA9DE055E18}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{F24DE973-4759-44EA-B130-5CBECF0D3973}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus", "src\CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus\CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj", "{8BBB8050-DA90-46CA-A890-5E6F02E5D1C2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore", "src\CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore\CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj", "{06090BF4-CADA-4D14-A6B7-FD329EB72BCD}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{733F8495-217E-47D7-B4B5-9A5EA6F51C5C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommunityAbp.AspNetZero.DistributedEventBus.Tests", "tests\CommunityAbp.AspNetZero.DistributedEventBus.Tests\CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj", "{030C3F8F-E3FC-4AB0-8D03-15AAF5DC2A15}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{77A2269B-78B0-4225-A88C-21EEE0BC36C8}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		README.md = README.md
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CommunityAbp.AspNetZero.DistributedEventBus.Test.Base", "tests\CommunityAbp.AspNetZero.DistributedEventBus.Test.Base\CommunityAbp.AspNetZero.DistributedEventBus.Test.Base.csproj", "{DEE39AF7-0B0E-4A10-BD9E-968CAC696465}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{35183364-5FE2-4A6D-AB8E-0EA9DE055E18}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{35183364-5FE2-4A6D-AB8E-0EA9DE055E18}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{35183364-5FE2-4A6D-AB8E-0EA9DE055E18}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{35183364-5FE2-4A6D-AB8E-0EA9DE055E18}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8BBB8050-DA90-46CA-A890-5E6F02E5D1C2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8BBB8050-DA90-46CA-A890-5E6F02E5D1C2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8BBB8050-DA90-46CA-A890-5E6F02E5D1C2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8BBB8050-DA90-46CA-A890-5E6F02E5D1C2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{06090BF4-CADA-4D14-A6B7-FD329EB72BCD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{06090BF4-CADA-4D14-A6B7-FD329EB72BCD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{06090BF4-CADA-4D14-A6B7-FD329EB72BCD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{06090BF4-CADA-4D14-A6B7-FD329EB72BCD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{030C3F8F-E3FC-4AB0-8D03-15AAF5DC2A15}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{030C3F8F-E3FC-4AB0-8D03-15AAF5DC2A15}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{030C3F8F-E3FC-4AB0-8D03-15AAF5DC2A15}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{030C3F8F-E3FC-4AB0-8D03-15AAF5DC2A15}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DEE39AF7-0B0E-4A10-BD9E-968CAC696465}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DEE39AF7-0B0E-4A10-BD9E-968CAC696465}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DEE39AF7-0B0E-4A10-BD9E-968CAC696465}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DEE39AF7-0B0E-4A10-BD9E-968CAC696465}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{35183364-5FE2-4A6D-AB8E-0EA9DE055E18} = {F24DE973-4759-44EA-B130-5CBECF0D3973}
+		{8BBB8050-DA90-46CA-A890-5E6F02E5D1C2} = {F24DE973-4759-44EA-B130-5CBECF0D3973}
+		{06090BF4-CADA-4D14-A6B7-FD329EB72BCD} = {F24DE973-4759-44EA-B130-5CBECF0D3973}
+		{030C3F8F-E3FC-4AB0-8D03-15AAF5DC2A15} = {733F8495-217E-47D7-B4B5-9A5EA6F51C5C}
+		{DEE39AF7-0B0E-4A10-BD9E-968CAC696465} = {733F8495-217E-47D7-B4B5-9A5EA6F51C5C}
+	EndGlobalSection
+EndGlobal
