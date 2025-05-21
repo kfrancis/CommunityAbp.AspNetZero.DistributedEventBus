@@ -89,6 +89,19 @@ The Outbox Relay and Inbox Relay services should be configured with:
 4. Configure Azure Service Bus connection strings in your services
 5. Integrate the outbox pattern into your service's domain operations
 
+### Example Configuration
+
+```csharp
+services.Configure<AzureServiceBusOptions>(options =>
+{
+    options.ConnectionString = "<YOUR CONNECTION STRING>";
+    options.EntityPath = "app-events"; // queue or topic
+    options.SubscriptionName = "default"; // optional for queues
+});
+
+Configuration.Modules.UseServiceBus<AzureServiceBusDistributedEventBus>();
+```
+
 ## Best Practices
 
 - Use atomic transactions when writing to the database and outbox
