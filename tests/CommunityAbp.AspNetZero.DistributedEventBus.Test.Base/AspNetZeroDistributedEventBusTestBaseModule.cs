@@ -1,7 +1,12 @@
+using Abp.Configuration.Startup;
+using Abp.Dependency;
 using Abp.Modules;
 using Abp.TestBase;
 using Castle.MicroKernel.Registration;
+using CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
 using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base.DependencyInjection;
 using Microsoft.Extensions.Configuration;
@@ -9,7 +14,11 @@ using NSubstitute;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 
-[DependsOn(typeof(AbpTestBaseModule), typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule))]
+[DependsOn(
+    typeof(AbpTestBaseModule),
+    typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule),
+    typeof(AzureDistributedEventServiceBusModule)
+)]
 public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
 {
     public AspNetZeroDistributedEventBusTestBaseModule(AspNetZeroDistributedEventEntityFrameworkCoreModule aspNetZeroDistributedEventEntityFrameworkCoreModule)
@@ -19,7 +28,6 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
 
     public override void PreInitialize()
     {
-        var configuration = GetConfiguration();
 
         Configuration.BackgroundJobs.IsJobExecutionEnabled = false;
 
@@ -42,8 +50,4 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
         );
     }
 
-    private static IConfigurationRoot GetConfiguration()
-    {
-        return AppConfigurations.Get(Directory.GetCurrentDirectory(), addUserSecrets: true);
-    }
 }
