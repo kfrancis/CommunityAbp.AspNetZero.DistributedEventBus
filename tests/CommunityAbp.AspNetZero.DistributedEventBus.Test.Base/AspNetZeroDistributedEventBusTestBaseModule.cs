@@ -1,3 +1,4 @@
+using System.Reflection;
 using Abp.Configuration.Startup;
 using Abp.Dependency;
 using Abp.Modules;

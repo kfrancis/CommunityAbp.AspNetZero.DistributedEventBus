@@ -1,21 +1,46 @@
+using Abp.Dependency;
 using Abp.Events.Bus;
+using Abp.TestBase;
+using Castle.MicroKernel.Registration;
+using CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
+using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 using NSubstitute;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
-public class DistributedEventBusTests : AppTestBase
+public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModule>
 {
+    private readonly IAzureServiceBusOptions _configuration;
+
+    public DistributedEventBusTests()
+    {
+        _configuration = Substitute.For<IAzureServiceBusOptions>();
+
+        // Setup configuration
+        _configuration.ConnectionString.Returns("Endpoint=sb://your-service-bus-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-access-key\"");
+        _configuration.EntityPath.Returns("your-queue-or-topic-name");
+        _configuration.SubscriptionName.Returns("your-subscription-name");
+
+        ReplaceService<IAzureServiceBusOptions>(_configuration);
+    }
+
+    [Fact]
+    public void TestEnvironment_ShouldResolveDistributedEventBus()
+    {
+        var localBus = Resolve<IDistributedEventBus>();
+        Assert.NotNull(localBus);
+    }
+
     [Fact]
     public async Task PublishAsync_ShouldPublishDirectly_WhenNotUsingOutbox()
     {
         // Arrange
         var mockOutboxManager = Substitute.For<ISupportsEventBoxes>();
         var localBus = Resolve<IDistributedEventBus>();
-        ReplaceService<ISupportsEventBoxes>(mockOutboxManager);
 
         var testEvent = new TestEvent();
 
@@ -70,13 +95,6 @@ public class DistributedEventBusTests : AppTestBase
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentNullException>(() => localBus.PublishAsync<TestEvent>(null, useOutbox: false));
-    }
-
-    [Fact]
-    public void TestEnvironment_ShouldResolveDistributedEventBus()
-    {
-        var localBus = Resolve<IDistributedEventBus>();
-        Assert.NotNull(localBus);
     }
 
     [EventName(nameof(TestEvent))]

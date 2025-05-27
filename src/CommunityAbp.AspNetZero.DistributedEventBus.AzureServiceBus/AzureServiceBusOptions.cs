@@ -5,7 +5,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 /// <summary>
 ///     Configuration settings used by <see cref="AzureServiceBusDistributedEventBus"/>.
 /// </summary>
-public class AzureServiceBusOptions
+public class AzureServiceBusOptions : IAzureServiceBusOptions
 {
     /// <summary>
     ///     Connection string for the Service Bus namespace.
@@ -20,5 +20,13 @@ public class AzureServiceBusOptions
     /// <summary>
     ///     Optional subscription name when using topics.
     /// </summary>
+    public string? SubscriptionName { get; set; }
+}
+
+public interface IAzureServiceBusOptions
+{
+    public string ConnectionString { get; set; }
+    public string EntityPath { get; set; }
+
     public string? SubscriptionName { get; set; }
 }

@@ -9,14 +9,11 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 
 public class AzureServiceBusDistributedEventBus : DistributedEventBusBase
-// No changes required here for the tests to run successfully, unless your test base module
-// or test setup needs to register a mock or in-memory implementation for this class.
-// If you encounter issues with this dependency, consider registering a mock in your test base module.
 {
     private readonly ServiceBusClient _client;
-    private readonly AzureServiceBusOptions _options;
+    private readonly IAzureServiceBusOptions _options;
 
-    public AzureServiceBusDistributedEventBus(AzureServiceBusOptions options)
+    public AzureServiceBusDistributedEventBus(IAzureServiceBusOptions options)
     {
         _options = options;
         _client = new ServiceBusClient(options.ConnectionString);

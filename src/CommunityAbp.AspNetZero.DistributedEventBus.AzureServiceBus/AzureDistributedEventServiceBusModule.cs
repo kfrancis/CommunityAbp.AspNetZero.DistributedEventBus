@@ -20,7 +20,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             Configuration.ReplaceService<IDistributedEventBus, AzureServiceBusDistributedEventBus>(DependencyLifeStyle.Transient);
 
             IocManager.IocContainer.Register(
-                Component.For<AzureServiceBusOptions>().Instance(GetAzureOptions(configuration)).LifestyleSingleton()
+                Component.For<IAzureServiceBusOptions>().Instance(GetAzureOptions(configuration)).LifestyleSingleton()
             );
         }
 
