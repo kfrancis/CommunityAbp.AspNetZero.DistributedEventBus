@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using Abp.Events.Bus;
 
@@ -7,7 +7,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 /// <summary>
 ///     Defines an interface for distributed event bus.
 /// </summary>
-public interface IDistributedEventBus : IEventBus
+public interface IDistributedEventBus : IEventBus, IDisposable
 {
     /// <summary>
     ///     Publishes an event using distributed event bus.

@@ -53,39 +53,45 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
         // Optionally, assert direct publish logic if accessible
     }
 
-    //[Fact]
-    //public async Task Subscribe_ShouldInvokeHandler_WhenEventIsPublished()
-    //{
-    //    // Arrange
-    //    var localBus = Resolve<IDistributedEventBus>();
-    //    var wasHandled = false;
+    [Fact]
+    public async Task Subscribe_ShouldInvokeHandler_WhenEventIsPublished()
+    {
+        // Arrange
+        var localBus = Resolve<IDistributedEventBus>();
+        var wasHandled = false;
 
-    //    localBus.Subscribe<TestEvent>(e => { wasHandled = true; return Task.CompletedTask; });
+        var handler = new TestEventHandler(() => wasHandled = true);
+        localBus.Subscribe<TestEvent>(handler);
 
-    //    // Act
-    //    await localBus.PublishAsync(new TestEvent(), useOutbox: false);
+        // Act
+        await localBus.PublishAsync(new TestEvent(), useOutbox: false);
 
-    //    // Assert
-    //    Assert.True(wasHandled);
-    //}
+        // Assert
+        Assert.True(wasHandled);
 
-    //[Fact]
-    //public async Task Unsubscribe_ShouldNotInvokeHandler_WhenEventIsPublished()
-    //{
-    //    // Arrange
-    //    var localBus = Resolve<IDistributedEventBus>();
-    //    var wasHandled = false;
-    //    Func<TestEvent, Task> handler = e => { wasHandled = true; return Task.CompletedTask; };
+        //Clean up
+        localBus.Dispose();
+    }
 
-    //    localBus.Subscribe(handler);
-    //    localBus.Unsubscribe(handler);
+    [Fact]
+    public async Task Unsubscribe_ShouldNotInvokeHandler_WhenEventIsPublished()
+    {
+        // Arrange
+        var localBus = Resolve<IDistributedEventBus>();
+        var wasHandled = false;
+        var handler = new TestEventHandler(() => wasHandled = true);
 
-    //    // Act
-    //    await localBus.PublishAsync(new TestEvent(), useOutbox: false);
+        localBus.Subscribe<TestEvent>(handler);
 
-    //    // Assert
-    //    Assert.False(wasHandled);
-    //}
+        // Act
+        await localBus.PublishAsync(new TestEvent(), useOutbox: false);
+
+        // Assert
+        Assert.False(wasHandled);
+
+        //Clean up
+        localBus.Dispose();
+    }
 
     [Fact]
     public async Task PublishAsync_ShouldThrowArgumentNullException_WhenEventIsNull()
@@ -99,4 +105,27 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
 
     [EventName(nameof(TestEvent))]
     private class TestEvent : EventData;
+
+    // Helper handler implementation for tests
+    private class TestEventHandler : IDistributedEventHandler<TestEvent>
+    {
+        private readonly Action _onHandle;
+
+        public TestEventHandler(Action onHandle)
+        {
+            _onHandle = onHandle;
+        }
+
+        public Task HandleAsync(TestEvent eventData)
+        {
+            _onHandle();
+            return Task.CompletedTask;
+        }
+
+        public Task HandleEventAsync(TestEvent eventData)
+        {
+            _onHandle();
+            return Task.CompletedTask;
+        }
+    }
 }
