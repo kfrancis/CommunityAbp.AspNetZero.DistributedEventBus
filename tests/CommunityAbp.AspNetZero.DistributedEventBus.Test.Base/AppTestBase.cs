@@ -4,7 +4,9 @@ using Abp.Events.Bus;
 using Abp.Events.Bus.Entities;
 using Abp.Modules;
 using Abp.TestBase;
+using Castle.MicroKernel.Registration;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
 {
@@ -20,6 +22,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
 
         protected AppTestBase()
         {
+            // No need to register DbContextOptions here; handled in module
             SeedTestData();
         }
 
@@ -123,6 +126,17 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
             var previousTenantId = AbpSession.TenantId;
             AbpSession.TenantId = tenantId;
             return new DisposeAction(() => AbpSession.TenantId = previousTenantId);
+        }
+
+        /// <summary>
+        ///     Replaces a service in the IoC container with the given instance.
+        /// </summary>
+        protected void ReplaceService<TService>(TService instance)
+            where TService : class
+        {
+            LocalIocManager.IocContainer.Register(
+                Component.For<TService>().Instance(instance).IsDefault()
+            );
         }
 
         private void SeedTestData()

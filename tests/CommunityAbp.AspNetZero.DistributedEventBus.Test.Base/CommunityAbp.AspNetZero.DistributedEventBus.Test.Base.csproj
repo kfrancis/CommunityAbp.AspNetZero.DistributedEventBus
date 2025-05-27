@@ -23,6 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus\CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj" />
     <ProjectReference Include="..\..\src\CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore\CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj" />
   </ItemGroup>
 
