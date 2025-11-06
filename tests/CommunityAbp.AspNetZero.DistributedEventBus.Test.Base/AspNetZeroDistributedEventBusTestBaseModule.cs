@@ -8,6 +8,10 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
 using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base.DependencyInjection;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInboxOutbox;
+using System;
+using Castle.MicroKernel.Registration;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 
@@ -18,9 +22,10 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 )]
 public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
 {
-    public AspNetZeroDistributedEventBusTestBaseModule(AspNetZeroDistributedEventEntityFrameworkCoreModule aspNetZeroDistributedEventEntityFrameworkCoreModule)
+    public AspNetZeroDistributedEventBusTestBaseModule(AspNetZeroDistributedEventEntityFrameworkCoreModule efModule)
     {
-        aspNetZeroDistributedEventEntityFrameworkCoreModule.SkipDbContextRegistration = true;
+        // Skip default registration to control in-memory db manually.
+        efModule.SkipDbContextRegistration = true;
     }
 
     public override void PreInitialize()
@@ -29,41 +34,52 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
         Configuration.UnitOfWork.Timeout = TimeSpan.FromMinutes(30);
         Configuration.UnitOfWork.IsTransactional = false;
 
-        // Ensure options objects are registered before configuring.
+        // Options singletons
         if (!IocManager.IsRegistered<DistributedEventBusOptions>())
-        {
             IocManager.Register<DistributedEventBusOptions>(DependencyLifeStyle.Singleton);
-        }
         if (!IocManager.IsRegistered<AspNetZeroEventBusBoxesOptions>())
-        {
             IocManager.Register<AspNetZeroEventBusBoxesOptions>(DependencyLifeStyle.Singleton);
+
+        // In-memory SQLite DbContext registration BEFORE outbox configuration
+        if (!IocManager.IsRegistered<DbContextOptions<DistributedEventBusDbContext>>())
+        {
+            var conn = new SqliteConnection("Data Source=:memory:");
+            conn.Open();
+            var builder = new DbContextOptionsBuilder<DistributedEventBusDbContext>().UseSqlite(conn);
+
+            IocManager.IocContainer.Register(
+                Component.For<DbContextOptions<DistributedEventBusDbContext>>()
+                         .Instance(builder.Options)
+                         .LifestyleSingleton(),
+                Component.For<DistributedEventBusDbContext>()
+                         .UsingFactoryMethod(k => new DistributedEventBusDbContext(builder.Options))
+                         .LifestyleTransient()
+            );
+
+            using var ctx = new DistributedEventBusDbContext(builder.Options);
+            ctx.Database.EnsureCreated();
         }
 
-        // Configure a default outbox using EF Core implementation.
-        var options = IocManager.Resolve<DistributedEventBusOptions>();
-        options.Outboxes.Configure("Default", o =>
+        // Do NOT manually register EfCoreEventOutbox here; it will be added by convention in Initialize of the EFCore module.
+        // (EfCoreEventOutbox implements ISingletonDependency.)
+
+        var opts = IocManager.Resolve<DistributedEventBusOptions>();
+        opts.Outboxes.Configure("Default", o =>
         {
-            o.DatabaseName = "Default";
             o.ImplementationType = typeof(EfCoreEventOutbox);
-            o.Selector = _ => true; // capture all events
+            o.Selector = _ => true;
             o.IsSendingEnabled = true;
+            // Resolve via interface to avoid requiring concrete registration at this phase.
+            o.Factory = (resolver, cfg) => resolver.Resolve<IEventOutbox>();
         });
 
-        // Ensure IEventOutbox is registered only once mapping to EfCoreEventOutbox.
-        if (!IocManager.IsRegistered<IEventOutbox>())
-        {
-            IocManager.Register<IEventOutbox, EfCoreEventOutbox>(DependencyLifeStyle.Transient);
-        }
-
+        // Register bus if absent
         if (!IocManager.IsRegistered<IDistributedEventBus>())
-        {
             IocManager.Register<IDistributedEventBus, DistributedEventBusBase>(DependencyLifeStyle.Transient);
-        }
     }
 
     public override void Initialize()
     {
         ServiceCollectionRegistrar.Register(IocManager);
     }
-
 }

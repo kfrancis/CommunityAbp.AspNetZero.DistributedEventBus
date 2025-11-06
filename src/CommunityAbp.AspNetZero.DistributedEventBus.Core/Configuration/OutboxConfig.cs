@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
@@ -36,6 +36,12 @@ public class OutboxConfig
     ///     True to enable sending outbox events, false to disable.
     /// </summary>
     public bool IsSendingEnabled { get; set; }
+
+    /// <summary>
+    ///     Optional factory to create the outbox instance. Takes an IIocResolver (or service provider abstraction) and current config.
+    ///     If set, overrides ImplementationType resolution.
+    /// </summary>
+    public Func<Abp.Dependency.IIocResolver, OutboxConfig, CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces.IEventOutbox> Factory { get; set; }
 }
 
 /// <summary>

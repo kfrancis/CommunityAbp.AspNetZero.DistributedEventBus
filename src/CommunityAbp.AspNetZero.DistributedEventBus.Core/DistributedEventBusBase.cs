@@ -11,14 +11,15 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using System.Threading;
 using Abp.Dependency;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Adapters;
-using Castle.MicroKernel.Registration; // added for dynamic registration fallback
+using Castle.MicroKernel.Registration;
+using System.Reflection;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core;
 
 #if NETSTANDARD2_0
 public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupportsEventBoxes, IDisposable
 #else
-public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupportsEventBoxes, IDisposable, IAsyncDisposable
+public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISUPPORTSEventBoxes, IDisposable, IAsyncDisposable
 #endif
 {
     private readonly Dictionary<Type, List<Func<object, Task>>> _handlers = new();
@@ -26,19 +27,17 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
 
     private DistributedEventBusOptions? _options; // cached options instance
 
-    // Allow DI to provide options; keep optional for backward compatibility where not registered yet.
+    // Cache resolved outboxes by configured name
+    private readonly Dictionary<string, IEventOutbox> _outboxCache = new(StringComparer.OrdinalIgnoreCase);
+
     public DistributedEventBusBase(DistributedEventBusOptions? options = null)
     {
-        _options = options; // may be null; will attempt lazy resolve later
+        _options = options;
     }
 
     private DistributedEventBusOptions? GetOptions()
     {
-        if (_options != null)
-        {
-            return _options;
-        }
-
+        if (_options != null) return _options;
         try
         {
             if (IocManager.Instance.IsRegistered<DistributedEventBusOptions>())
@@ -46,98 +45,191 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                 _options = IocManager.Instance.Resolve<DistributedEventBusOptions>();
             }
         }
-        catch
-        {
-            // swallow; will treat as unconfigured
-        }
-
+        catch { }
         return _options;
     }
 
-    public virtual Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true)
-        where TEvent : class
+    public virtual Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
     {
-        if (eventData == null)
-        {
-            throw new ArgumentNullException(nameof(eventData));
-        }
+        if (eventData == null) throw new ArgumentNullException(nameof(eventData));
         return PublishAsync(typeof(TEvent), eventData, onUnitOfWorkComplete, useOutbox);
     }
 
     public virtual async Task PublishAsync(Type eventType, object eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true)
     {
-        if (eventType == null)
+        if (eventType == null) throw new ArgumentNullException(nameof(eventType));
+
+        if (!useOutbox)
         {
-            throw new ArgumentNullException(nameof(eventType));
-        }
-
-        if (useOutbox)
-        {
-            var options = GetOptions();
-            if (options == null)
-            {
-                // No options registered: fall back to direct dispatch
-                await DispatchAsync(eventType, eventData);
-                return;
-            }
-
-            var matchingOutboxes = options.Outboxes.Values.Where(o => o.Selector == null || o.Selector(eventType)).ToList();
-            if (matchingOutboxes.Count == 0)
-            {
-                await DispatchAsync(eventType, eventData);
-                return;
-            }
-
-            foreach (var outboxConfig in matchingOutboxes)
-            {
-                IEventOutbox? outbox = null;
-
-                // Try resolving concrete implementation type first (more specific)
-                if (outboxConfig.ImplementationType != null)
-                {
-                    try
-                    {
-                        if (IocManager.Instance.IsRegistered(outboxConfig.ImplementationType))
-                        {
-                            outbox = (IEventOutbox)IocManager.Instance.Resolve(outboxConfig.ImplementationType);
-                        }
-                    }
-                    catch { outbox = null; }
-                }
-
-                // Fallback to interface mapping
-                if (outbox == null && IocManager.Instance.IsRegistered<IEventOutbox>())
-                {
-                    try { outbox = IocManager.Instance.Resolve<IEventOutbox>(); } catch { outbox = null; }
-                }
-
-                // If still null, skip storing and dispatch directly (avoid hard failure in tests)
-                if (outbox == null)
-                {
-                    await DispatchAsync(eventType, eventData);
-                    continue; // move to next configured outbox (if any)
-                }
-
-                var outgoing = new OutgoingEventInfo(
-                    Guid.NewGuid(),
-                    eventType.AssemblyQualifiedName!,
-                    JsonSerializer.SerializeToUtf8Bytes(eventData),
-                    DateTime.UtcNow);
-
-                await outbox.AddAsync(outgoing, CancellationToken.None);
-            }
+            await DispatchAsync(eventType, eventData);
             return;
         }
 
-        await DispatchAsync(eventType, eventData);
+        var options = GetOptions();
+        if (options == null)
+        {
+            await DispatchAsync(eventType, eventData);
+            return;
+        }
+
+        var matchingOutboxes = options.Outboxes
+            .Where(kv => kv.Value.IsSendingEnabled && (kv.Value.Selector == null || kv.Value.Selector(eventType)))
+            .ToList();
+
+        if (matchingOutboxes.Count == 0)
+        {
+            await DispatchAsync(eventType, eventData);
+            return;
+        }
+
+        var serializedBytes = JsonSerializer.SerializeToUtf8Bytes(eventData);
+
+        foreach (var kv in matchingOutboxes)
+        {
+            var name = kv.Key;
+            var outboxConfig = kv.Value;
+            var outbox = ResolveOutbox(name, outboxConfig);
+            if (outbox == null)
+            {
+                await DispatchAsync(eventType, eventData); // fail-safe
+                continue;
+            }
+
+            var outgoing = new OutgoingEventInfo(
+                Guid.NewGuid(),
+                eventType.AssemblyQualifiedName!,
+                serializedBytes,
+                DateTime.UtcNow);
+            try
+            {
+                await outbox.AddAsync(outgoing, CancellationToken.None);
+            }
+            catch
+            {
+                await DispatchAsync(eventType, eventData); // fail-safe
+            }
+        }
     }
+
+    private IEventOutbox? ResolveOutbox(string name, OutboxConfig config)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = config.ImplementationType?.FullName ?? Guid.NewGuid().ToString("N");
+        }
+
+        if (_outboxCache.TryGetValue(name, out var cached)) return cached;
+
+        // Factory override path
+        if (config.Factory != null)
+        {
+            try
+            {
+                var created = config.Factory(IocManager.Instance, config);
+                if (created != null)
+                {
+                    _outboxCache[name] = created;
+                    return created;
+                }
+            }
+            catch { /* ignore and continue */ }
+        }
+
+        if (config.ImplementationType != null && typeof(IEventOutbox).IsAssignableFrom(config.ImplementationType))
+        {
+            // EARLY interface-based resolution: interface may be registered but concrete type not explicitly
+            if (!IocManager.Instance.IsRegistered(config.ImplementationType) && IocManager.Instance.IsRegistered<IEventOutbox>())
+            {
+                try
+                {
+                    var candidate = IocManager.Instance.Resolve<IEventOutbox>();
+                    if (candidate != null && config.ImplementationType.IsInstanceOfType(candidate))
+                    {
+                        _outboxCache[name] = candidate;
+                        return candidate;
+                    }
+                }
+                catch { /* continue */ }
+            }
+
+            // If concrete already registered simply resolve
+            if (IocManager.Instance.IsRegistered(config.ImplementationType))
+            {
+                try
+                {
+                    var resolvedExisting = (IEventOutbox)IocManager.Instance.Resolve(config.ImplementationType);
+                    _outboxCache[name] = resolvedExisting;
+                    return resolvedExisting;
+                }
+                catch { /* continue to fallback */ }
+            }
+            else
+            {
+                var ctor = config.ImplementationType.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+                    .OrderByDescending(c => c.GetParameters().Length)
+                    .FirstOrDefault();
+                if (ctor != null)
+                {
+                    var parameters = ctor.GetParameters();
+                    var allResolvable = parameters.All(p => IocManager.Instance.IsRegistered(p.ParameterType));
+                    if (allResolvable && parameters.Length > 0)
+                    {
+                        try
+                        {
+                            IocManager.Instance.IocContainer.Register(
+                                Component.For(typeof(IEventOutbox), config.ImplementationType)
+                                         .ImplementedBy(config.ImplementationType)
+                                         .LifestyleSingleton());
+                            var resolved = (IEventOutbox)IocManager.Instance.Resolve(config.ImplementationType);
+                            _outboxCache[name] = resolved;
+                            return resolved;
+                        }
+                        catch { /* ignore */ }
+                    }
+                    else if (parameters.Length == 0)
+                    {
+                        try
+                        {
+                            IocManager.Instance.IocContainer.Register(
+                                Component.For(typeof(IEventOutbox), config.ImplementationType)
+                                         .ImplementedBy(config.ImplementationType)
+                                         .LifestyleSingleton());
+                            var resolved = (IEventOutbox)IocManager.Instance.Resolve(config.ImplementationType);
+                            _outboxCache[name] = resolved;
+                            return resolved;
+                        }
+                        catch { /* ignore */ }
+                    }
+                }
+            }
+        }
+
+        try
+        {
+            if (IocManager.Instance.IsRegistered<IEventOutbox>())
+            {
+                var handlers = IocManager.Instance.IocContainer.Kernel.GetHandlers(typeof(IEventOutbox));
+                if (handlers.Length == 1)
+                {
+                    var singleton = IocManager.Instance.Resolve<IEventOutbox>();
+                    _outboxCache[name] = singleton;
+                    return singleton;
+                }
+            }
+        }
+        catch { }
+
+        return null;
+    }
+
+    private IEventOutbox? ResolveOutbox(OutboxConfig config) =>
+        ResolveOutbox(config.ImplementationType?.FullName ?? Guid.NewGuid().ToString("N"), config);
 
     private Task DispatchAsync(Type eventType, object eventData)
     {
         if (_handlers.TryGetValue(eventType, out var handlers))
         {
-            var tasks = handlers.Select(h => h(eventData));
-            return Task.WhenAll(tasks);
+            return Task.WhenAll(handlers.Select(h => h(eventData)));
         }
         return Task.CompletedTask;
     }
@@ -150,15 +242,9 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             handlers = new List<Func<object, Task>>();
             _handlers[eventType] = handlers;
         }
-
         async Task Wrapper(object e) => await handler.HandleEventAsync((TEvent)e);
         handlers.Add(Wrapper);
-
-        var adapter = new AbpDistributedEventHandlerAdapter<TEvent>(handler);
-
-        // EventBus (base) does not expose a Subscribe method; prevent CS0117 by using a no-op disposable.
         var baseSubscription = DisposeAction.Empty;
-
         return new DisposeAction(() =>
         {
             handlers.Remove(Wrapper);
@@ -169,35 +255,20 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     public virtual Task PublishFromOutboxAsync(OutgoingEventInfo outgoingEvent, OutboxConfig outboxConfig)
     {
         var eventType = Type.GetType(outgoingEvent.EventName);
-        if (eventType == null)
-        {
-            return Task.CompletedTask;
-        }
-
+        if (eventType == null) return Task.CompletedTask;
         var eventData = JsonSerializer.Deserialize(outgoingEvent.EventData, eventType);
-        return eventData != null
-            ? DispatchAsync(eventType, eventData)
-            : Task.CompletedTask;
+        return eventData != null ? DispatchAsync(eventType, eventData) : Task.CompletedTask;
     }
 
     public virtual Task PublishManyFromOutboxAsync(IEnumerable<OutgoingEventInfo> outgoingEvents, OutboxConfig outboxConfig)
-    {
-        var tasks = outgoingEvents.Select(e => PublishFromOutboxAsync(e, outboxConfig));
-        return Task.WhenAll(tasks);
-    }
+        => Task.WhenAll(outgoingEvents.Select(e => PublishFromOutboxAsync(e, outboxConfig)));
 
     public virtual Task ProcessFromInboxAsync(IncomingEventInfo incomingEvent, InboxConfig inboxConfig)
     {
         var eventType = Type.GetType(incomingEvent.EventName);
-        if (eventType == null)
-        {
-            return Task.CompletedTask;
-        }
-
+        if (eventType == null) return Task.CompletedTask;
         var eventData = JsonSerializer.Deserialize(incomingEvent.EventData, eventType);
-        return eventData != null
-            ? DispatchAsync(eventType, eventData)
-            : Task.CompletedTask;
+        return eventData != null ? DispatchAsync(eventType, eventData) : Task.CompletedTask;
     }
 
     protected virtual void Dispose(bool disposing)
@@ -207,6 +278,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             if (disposing)
             {
                 _handlers.Clear();
+                _outboxCache.Clear();
             }
             _disposed = true;
         }
@@ -218,16 +290,13 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
         GC.SuppressFinalize(this);
     }
 
-    // New overloads with CancellationToken (token not yet used; placeholder for future enhancements)
-    public Task PublishAsync<TEvent>(TEvent eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true)
-        where TEvent : class
+    public Task PublishAsync<TEvent>(TEvent eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
         => PublishAsync(eventData, onUnitOfWorkComplete, useOutbox);
 
     public Task PublishAsync(Type eventType, object eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true)
         => PublishAsync(eventType, eventData, onUnitOfWorkComplete, useOutbox);
 
-    public IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler, CancellationToken cancellationToken)
-        where TEvent : class
+    public IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler, CancellationToken cancellationToken) where TEvent : class
         => Subscribe(handler);
 
 #if !NETSTANDARD2_0

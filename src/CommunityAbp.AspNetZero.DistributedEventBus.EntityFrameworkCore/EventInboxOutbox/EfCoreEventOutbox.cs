@@ -7,10 +7,12 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Abp.Dependency; // added for ISingletonDependency marker
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInboxOutbox;
 
-public class EfCoreEventOutbox : IEventOutbox
+// Mark as singleton so ABP auto-registers it and dependencies are injected
+public class EfCoreEventOutbox : IEventOutbox, ISingletonDependency
 {
     private readonly DistributedEventBusDbContext _dbContext;
 
