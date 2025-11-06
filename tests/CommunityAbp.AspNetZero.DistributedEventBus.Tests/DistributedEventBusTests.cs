@@ -1,11 +1,6 @@
-using Abp.Dependency;
-using Abp.Events.Bus;
-using Abp.TestBase;
-using Castle.MicroKernel.Registration;
+using Abp.Events.Bus; // Needed for EventData base class
 using CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
-using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
-using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 using NSubstitute;
@@ -20,108 +15,69 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     {
         _configuration = Substitute.For<IAzureServiceBusOptions>();
 
-        // Setup configuration
-        _configuration.ConnectionString.Returns("Endpoint=sb://your-service-bus-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-access-key\"");
+        // Stub configuration (not actually used by in-memory bus replacement in tests)
+        _configuration.ConnectionString.Returns("Endpoint=sb://your-service-bus-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-access-key");
         _configuration.EntityPath.Returns("your-queue-or-topic-name");
         _configuration.SubscriptionName.Returns("your-subscription-name");
 
-        ReplaceService<IAzureServiceBusOptions>(_configuration);
+        ReplaceService(_configuration);
     }
 
     [Fact]
     public void TestEnvironment_ShouldResolveDistributedEventBus()
     {
-        var localBus = Resolve<IDistributedEventBus>();
-        Assert.NotNull(localBus);
+        var bus = Resolve<IDistributedEventBus>();
+        Assert.NotNull(bus);
     }
 
     [Fact]
     public async Task PublishAsync_ShouldPublishDirectly_WhenNotUsingOutbox()
     {
-        // Arrange
-        var mockOutboxManager = Substitute.For<ISupportsEventBoxes>();
-        var localBus = Resolve<IDistributedEventBus>();
-
-        var testEvent = new TestEvent();
-
-        // Act
-        await localBus.PublishAsync(testEvent, useOutbox: false);
-
-        // Assert
-        await mockOutboxManager.DidNotReceive().PublishFromOutboxAsync(
-            Arg.Any<OutgoingEventInfo>(), Arg.Any<OutboxConfig>());
-        // Optionally, assert direct publish logic if accessible
+        var bus = Resolve<IDistributedEventBus>();
+        await bus.PublishAsync(new TestEvent(), useOutbox: false);
     }
 
     [Fact]
     public async Task Subscribe_ShouldInvokeHandler_WhenEventIsPublished()
     {
-        // Arrange
-        var localBus = Resolve<IDistributedEventBus>();
-        var wasHandled = false;
+        var bus = Resolve<IDistributedEventBus>();
+        var handled = false;
 
-        var handler = new TestEventHandler(() => wasHandled = true);
-        localBus.Subscribe<TestEvent>(handler);
+        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+        await bus.PublishAsync(new TestEvent(), useOutbox: false);
 
-        // Act
-        await localBus.PublishAsync(new TestEvent(), useOutbox: false);
-
-        // Assert
-        Assert.True(wasHandled);
-
-        //Clean up
-        localBus.Dispose();
+        Assert.True(handled);
     }
 
     [Fact]
     public async Task Unsubscribe_ShouldNotInvokeHandler_WhenEventIsPublished()
     {
-        // Arrange
-        var localBus = Resolve<IDistributedEventBus>();
-        var wasHandled = false;
-        var handler = new TestEventHandler(() => wasHandled = true);
+        var bus = Resolve<IDistributedEventBus>();
+        var handled = false;
+        var handler = new TestEventHandler(() => handled = true);
 
-        localBus.Subscribe<TestEvent>(handler);
+        var subscription = bus.Subscribe<TestEvent>(handler);
+        subscription.Dispose();
 
-        // Act
-        await localBus.PublishAsync(new TestEvent(), useOutbox: false);
+        await bus.PublishAsync(new TestEvent(), useOutbox: false);
 
-        // Assert
-        Assert.False(wasHandled);
-
-        //Clean up
-        localBus.Dispose();
+        Assert.False(handled);
     }
 
     [Fact]
     public async Task PublishAsync_ShouldThrowArgumentNullException_WhenEventIsNull()
     {
-        // Arrange
-        var localBus = Resolve<IDistributedEventBus>();
-
-        // Act & Assert
-        await Assert.ThrowsAsync<ArgumentNullException>(() => localBus.PublishAsync<TestEvent>(null, useOutbox: false));
+        var bus = Resolve<IDistributedEventBus>();
+        await Assert.ThrowsAsync<ArgumentNullException>(() => bus.PublishAsync<TestEvent>(null, useOutbox: false));
     }
 
     [EventName(nameof(TestEvent))]
     private class TestEvent : EventData;
 
-    // Helper handler implementation for tests
     private class TestEventHandler : IDistributedEventHandler<TestEvent>
     {
         private readonly Action _onHandle;
-
-        public TestEventHandler(Action onHandle)
-        {
-            _onHandle = onHandle;
-        }
-
-        public Task HandleAsync(TestEvent eventData)
-        {
-            _onHandle();
-            return Task.CompletedTask;
-        }
-
+        public TestEventHandler(Action onHandle) => _onHandle = onHandle;
         public Task HandleEventAsync(TestEvent eventData)
         {
             _onHandle();

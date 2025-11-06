@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using Abp.Reflection.Extensions;
@@ -42,18 +42,12 @@ public static class WebContentDirectoryFinder
         }
 
         var directoryInfo = new DirectoryInfo(coreAssemblyDirectoryPath);
-        while (!DirectoryContains(directoryInfo.FullName, "ModularTodoApp.sln"))
+        while (!DirectoryContains(directoryInfo.FullName, "CommunityAbp.AspNetZero.DistributedEventBus.sln"))
         {
             directoryInfo = directoryInfo.Parent ?? throw new Exception("Could not find content root folder!");
         }
-
-        var webMvcFolder = Path.Combine(directoryInfo.FullName, "src", "ModularTodoApp.Web.Mvc");
-        if (Directory.Exists(webMvcFolder))
-        {
-            return webMvcFolder;
-        }
-
-        throw new Exception("Could not find root folder of the web project!");
+        // Return solution root (adjust if a specific web project is added later)
+        return directoryInfo.FullName;
     }
 
     private static bool DirectoryContains(string directory, string fileName)

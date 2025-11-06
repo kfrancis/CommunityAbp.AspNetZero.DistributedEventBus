@@ -1,0 +1,62 @@
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
+using Abp.Events.Bus;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
+namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
+
+public class OutboxInboxTests : DistributedEventBusTests
+{
+    [Fact]
+    public async Task Publish_WithOutbox_ShouldPersistMessage()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        await bus.PublishAsync(new TestEvent(), useOutbox: true);
+
+        UsingDbContext(ctx =>
+        {
+            Assert.True(ctx.OutboxMessages.Any());
+        });
+    }
+
+    [Fact]
+    public async Task Publish_WithOutbox_ShouldNotDeliverImmediately()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        var handled = false;
+        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+
+        await bus.PublishAsync(new TestEvent(), useOutbox: true);
+        Assert.False(handled); // not delivered yet
+    }
+
+    [Fact]
+    public async Task PollingOutboxSender_ShouldDeliverPersistedEvents()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        var handled = false;
+        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+
+        await bus.PublishAsync(new TestEvent(), useOutbox: true);
+
+        var sender = Resolve<IOutboxSender>();  
+        await sender.StartAsync(new Core.Configuration.OutboxConfig());
+        // wait briefly for polling loop
+        await Task.Delay(3000);
+        Assert.True(handled);
+        await sender.StopAsync();
+    }
+
+    [EventName(nameof(TestEvent))]
+    private class TestEvent : EventData { }
+
+    private class TestEventHandler : IDistributedEventHandler<TestEvent>
+    {
+        private readonly System.Action _onHandle;
+        public TestEventHandler(System.Action onHandle) => _onHandle = onHandle;
+        public Task HandleEventAsync(TestEvent eventData)
+        {
+            _onHandle();
+            return Task.CompletedTask;
+        }
+    }
+}
