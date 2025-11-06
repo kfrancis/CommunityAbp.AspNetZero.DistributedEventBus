@@ -26,6 +26,9 @@ public class OutboxInboxTests : DistributedEventBusTests
         bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
 
         await bus.PublishAsync(new TestEvent(), useOutbox: true);
+        // Allow any immediate synchronous handlers to run
+        await Task.Yield();
+        UsingDbContext(ctx => Assert.True(ctx.OutboxMessages.Any()));
         Assert.False(handled); // not delivered yet
     }
 

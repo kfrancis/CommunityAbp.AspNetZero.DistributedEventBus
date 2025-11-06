@@ -24,7 +24,6 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
 {
     public AspNetZeroDistributedEventBusTestBaseModule(AspNetZeroDistributedEventEntityFrameworkCoreModule efModule)
     {
-        // Skip default registration to control in-memory db manually.
         efModule.SkipDbContextRegistration = true;
     }
 
@@ -34,13 +33,21 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
         Configuration.UnitOfWork.Timeout = TimeSpan.FromMinutes(30);
         Configuration.UnitOfWork.IsTransactional = false;
 
-        // Options singletons
+        // Use existing registration or create singleton if missing
         if (!IocManager.IsRegistered<DistributedEventBusOptions>())
             IocManager.Register<DistributedEventBusOptions>(DependencyLifeStyle.Singleton);
+        var opts = IocManager.Resolve<DistributedEventBusOptions>();
+
         if (!IocManager.IsRegistered<AspNetZeroEventBusBoxesOptions>())
             IocManager.Register<AspNetZeroEventBusBoxesOptions>(DependencyLifeStyle.Singleton);
 
-        // In-memory SQLite DbContext registration BEFORE outbox configuration
+
+        if (!IocManager.IsRegistered<IEventOutbox>())
+            IocManager.Register<IEventOutbox, EfCoreEventOutbox>(DependencyLifeStyle.Transient);
+
+        if (!IocManager.IsRegistered<IDistributedEventBus>())
+            IocManager.Register<IDistributedEventBus, DistributedEventBusBase>(DependencyLifeStyle.Transient);
+
         if (!IocManager.IsRegistered<DbContextOptions<DistributedEventBusDbContext>>())
         {
             var conn = new SqliteConnection("Data Source=:memory:");
@@ -60,22 +67,16 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
             ctx.Database.EnsureCreated();
         }
 
-        // Do NOT manually register EfCoreEventOutbox here; it will be added by convention in Initialize of the EFCore module.
-        // (EfCoreEventOutbox implements ISingletonDependency.)
-
-        var opts = IocManager.Resolve<DistributedEventBusOptions>();
-        opts.Outboxes.Configure("Default", o =>
+        // Only configure outbox if not already configured to avoid duplicates
+        if (opts.Outboxes.Count == 0)
         {
-            o.ImplementationType = typeof(EfCoreEventOutbox);
-            o.Selector = _ => true;
-            o.IsSendingEnabled = true;
-            // Resolve via interface to avoid requiring concrete registration at this phase.
-            o.Factory = (resolver, cfg) => resolver.Resolve<IEventOutbox>();
-        });
-
-        // Register bus if absent
-        if (!IocManager.IsRegistered<IDistributedEventBus>())
-            IocManager.Register<IDistributedEventBus, DistributedEventBusBase>(DependencyLifeStyle.Transient);
+            opts.Outboxes.Configure("Default", o =>
+            {
+                o.ImplementationType = typeof(EfCoreEventOutbox);
+                o.Selector = _ => true;
+                o.IsSendingEnabled = true; // enable persistence but we won't start sender in this test
+            });
+        }
     }
 
     public override void Initialize()

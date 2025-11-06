@@ -9,8 +9,15 @@ public class AspNetZeroDistributedEventBusModule : AbpModule
 {
     public override void PreInitialize()
     {
-        IocManager.Register<DistributedEventBusOptions>();
-        IocManager.Register<AspNetZeroEventBusBoxesOptions>();
+        // Ensure options live as singletons so runtime configuration (tests) is visible to bus instances.
+        if (!IocManager.IsRegistered<DistributedEventBusOptions>())
+        {
+            IocManager.Register<DistributedEventBusOptions>(DependencyLifeStyle.Singleton);
+        }
+        if (!IocManager.IsRegistered<AspNetZeroEventBusBoxesOptions>())
+        {
+            IocManager.Register<AspNetZeroEventBusBoxesOptions>(DependencyLifeStyle.Singleton);
+        }
         IocManager.Register<IOutboxSender, PollingOutboxSender>(DependencyLifeStyle.Singleton);
         IocManager.Register<IInboxProcessor, PollingInboxProcessor>(DependencyLifeStyle.Singleton);
     }

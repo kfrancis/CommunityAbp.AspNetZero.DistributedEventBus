@@ -5,11 +5,11 @@ using Abp;
 using Abp.Threading;
 using Azure.Messaging.ServiceBus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using System.Threading;
-using Abp;
-using Abp.Threading;
+using Abp.Dependency;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
 {
@@ -23,7 +23,8 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
         private readonly IAzureServiceBusOptions _options;
         private readonly IEventInbox? _inbox;
 
-        public AzureServiceBusDistributedEventBus(IAzureServiceBusOptions options, IEventInbox? inbox = null)
+        public AzureServiceBusDistributedEventBus(DistributedEventBusOptions busOptions, IAzureServiceBusOptions options, IIocManager iocManager, IEventInbox? inbox = null)
+            : base(busOptions, iocManager)
         {
             _options = options;
             _client = new ServiceBusClient(options.ConnectionString);
@@ -32,7 +33,14 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
 
         public override async Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true)
         {
+            // Persist to outbox or dispatch directly (base logic)
             await base.PublishAsync(eventData, onUnitOfWorkComplete, useOutbox);
+
+            // If using outbox, defer sending until the outbox sender processes it.
+            if (useOutbox)
+            {
+                return;
+            }
 
             var sender = _client.CreateSender(_options.EntityPath);
             var message = new ServiceBusMessage(JsonSerializer.SerializeToUtf8Bytes(eventData))
@@ -97,22 +105,20 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             }
 
             var baseSubscription = base.Subscribe(handler);
-
-            return new DisposeAction(() =>
+            return new LocalDispose(() =>
             {
                 baseSubscription.Dispose();
                 AsyncHelper.RunSync(async () =>
                 {
-                    try
-                    {
-                        await processor.StopProcessingAsync();
-                    }
-                    finally
-                    {
-                        await processor.DisposeAsync();
-                    }
+                    try { await processor.StopProcessingAsync(); }
+                    finally { await processor.DisposeAsync(); }
                 });
             });
+        }
+
+        private sealed class LocalDispose : IDisposable
+        {
+            private readonly Action _d; public LocalDispose(Action d) => _d = d; public void Dispose() => _d();
         }
 
 #if !NETSTANDARD2_0

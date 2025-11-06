@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Abp.Dependency;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
