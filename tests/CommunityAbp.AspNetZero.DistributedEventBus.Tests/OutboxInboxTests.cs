@@ -2,6 +2,8 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using Abp.Events.Bus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core;
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
 public class OutboxInboxTests : DistributedEventBusTests

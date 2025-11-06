@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
+using System.Text.Json; // kept for potential fallback
 using System.Threading.Tasks;
 using Abp.Events.Bus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
@@ -9,6 +9,7 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using System.Threading;
 using Abp.Dependency;
+using System.Collections.Immutable;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core;
 
@@ -18,16 +19,19 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
 public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupportsEventBoxes, IDisposable, IAsyncDisposable
 #endif
 {
-    private readonly Dictionary<Type, List<Func<object, Task>>> _handlers = new();
+    private ImmutableDictionary<Type, ImmutableList<Func<object, Task>>> _handlers = ImmutableDictionary<Type, ImmutableList<Func<object, Task>>>.Empty;
+    private readonly object _handlersLock = new();
     private bool _disposed;
     private readonly DistributedEventBusOptions _options; // injected singleton
     private readonly Dictionary<string, IEventOutbox> _outboxCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly IIocManager IocManager;
+    private readonly IEventSerializer _serializer;
 
-    public DistributedEventBusBase(DistributedEventBusOptions options, IIocManager iocManager)
+    public DistributedEventBusBase(DistributedEventBusOptions options, IIocManager iocManager, IEventSerializer serializer)
     {
         _options = options;
         IocManager = iocManager;
+        _serializer = serializer;
     }
 
     public virtual Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
@@ -51,8 +55,6 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             throw new InvalidOperationException("No outboxes configured while useOutbox=true.");
         }
 
-        // Persist to all configured outboxes whose selector matches, regardless of IsSendingEnabled.
-        // IsSendingEnabled should control background sending, not initial persistence.
         var matchingOutboxes = _options.Outboxes
             .Where(kv => (kv.Value.Selector == null || kv.Value.Selector(eventType)))
             .ToList();
@@ -64,7 +66,8 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             return;
         }
 
-        var serializedBytes = JsonSerializer.SerializeToUtf8Bytes(eventData);
+        var bytes = _serializer.Serialize(eventData, eventType);
+        var typeIdentifier = _serializer.GetTypeIdentifier(eventType);
 
         foreach (var kv in matchingOutboxes)
         {
@@ -78,10 +81,10 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
 
             var outgoing = new OutgoingEventInfo(
                 Guid.NewGuid(),
-                eventType.AssemblyQualifiedName!,
-                serializedBytes,
+                typeIdentifier,
+                bytes,
                 DateTime.UtcNow);
-            // Remove silent catch to surface issues in tests
+
             await outbox.AddAsync(outgoing, CancellationToken.None);
         }
     }
@@ -134,8 +137,13 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
 
     private Task DispatchAsync(Type eventType, object eventData)
     {
-        if (_handlers.TryGetValue(eventType, out var handlers))
+        ImmutableList<Func<object, Task>> handlers;
+        if (_handlers.TryGetValue(eventType, out handlers))
         {
+            if (handlers.Count == 1)
+            {
+                return handlers[0](eventData);
+            }
             return Task.WhenAll(handlers.Select(h => h(eventData)));
         }
         return Task.CompletedTask;
@@ -144,25 +152,36 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     public virtual IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler) where TEvent : class
     {
         var eventType = typeof(TEvent);
-        if (!_handlers.TryGetValue(eventType, out var handlers))
-        {
-            handlers = new List<Func<object, Task>>();
-            _handlers[eventType] = handlers;
-        }
         async Task Wrapper(object e) => await handler.HandleEventAsync((TEvent)e);
-        handlers.Add(Wrapper);
-        return new ActionDisposer(() => handlers.Remove(Wrapper));
+
+        lock (_handlersLock)
+        {
+            var current = _handlers.TryGetValue(eventType, out var list) ? list : ImmutableList<Func<object, Task>>.Empty;
+            _handlers = _handlers.SetItem(eventType, current.Add(Wrapper));
+        }
+
+        return new ActionDisposer(() =>
+        {
+            lock (_handlersLock)
+            {
+                if (_handlers.TryGetValue(eventType, out var list))
+                {
+                    var updated = list.Remove(Wrapper);
+                    _handlers = updated.Count == 0 ? _handlers.Remove(eventType) : _handlers.SetItem(eventType, updated);
+                }
+            }
+        });
     }
 
     // ISupportsEventBoxes implementations
     public async Task PublishFromOutboxAsync(OutgoingEventInfo outgoingEvent, OutboxConfig outboxConfig)
     {
         if (outgoingEvent == null) throw new ArgumentNullException(nameof(outgoingEvent));
-        var type = Type.GetType(outgoingEvent.EventName);
-        if (type == null) return; // cannot dispatch
+        var type = _serializer.ResolveType(outgoingEvent.EventName);
+        if (type == null) return;
         try
         {
-            var obj = JsonSerializer.Deserialize(outgoingEvent.EventData, type);
+            var obj = _serializer.Deserialize(outgoingEvent.EventData, type);
             if (obj != null)
             {
                 await DispatchAsync(type, obj);
@@ -185,11 +204,11 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     public async Task ProcessFromInboxAsync(IncomingEventInfo incomingEvent, InboxConfig inboxConfig)
     {
         if (incomingEvent == null) throw new ArgumentNullException(nameof(incomingEvent));
-        var type = Type.GetType(incomingEvent.EventName);
+        var type = _serializer.ResolveType(incomingEvent.EventName);
         if (type == null) return;
         try
         {
-            var obj = JsonSerializer.Deserialize(incomingEvent.EventData, type);
+            var obj = _serializer.Deserialize(incomingEvent.EventData, type);
             if (obj != null)
             {
                 await DispatchAsync(type, obj);
@@ -214,7 +233,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
         {
             if (disposing)
             {
-                _handlers.Clear();
+                _handlers = ImmutableDictionary<Type, ImmutableList<Func<object, Task>>>.Empty;
                 _outboxCache.Clear();
             }
             _disposed = true;
@@ -228,7 +247,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     }
 
     public Task PublishAsync<TEvent>(TEvent eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
-        => PublishAsync(eventData, onUnitOfWorkComplete, useOutbox);
+        => PublishAsync(eventData!, onUnitOfWorkComplete, useOutbox);
 
     public Task PublishAsync(Type eventType, object eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true)
         => PublishAsync(eventType, eventData, onUnitOfWorkComplete, useOutbox);

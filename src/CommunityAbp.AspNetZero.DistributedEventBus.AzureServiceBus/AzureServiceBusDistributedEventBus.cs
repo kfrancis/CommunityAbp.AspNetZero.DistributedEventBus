@@ -22,13 +22,20 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
         private readonly ServiceBusClient _client;
         private readonly IAzureServiceBusOptions _options;
         private readonly IEventInbox? _inbox;
+        private readonly IEventSerializer _serializer;
 
-        public AzureServiceBusDistributedEventBus(DistributedEventBusOptions busOptions, IAzureServiceBusOptions options, IIocManager iocManager, IEventInbox? inbox = null)
-            : base(busOptions, iocManager)
+        public AzureServiceBusDistributedEventBus(
+            DistributedEventBusOptions busOptions,
+            IAzureServiceBusOptions options,
+            IIocManager iocManager,
+            IEventSerializer serializer,
+            IEventInbox? inbox = null)
+            : base(busOptions, iocManager, serializer)
         {
             _options = options;
             _client = new ServiceBusClient(options.ConnectionString);
             _inbox = inbox; // optional if not configured
+            _serializer = serializer;
         }
 
         public override async Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true)
@@ -39,15 +46,15 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             // If using outbox, defer sending until the outbox sender processes it.
             if (useOutbox)
             {
-                return;
+                return; // store & forward later
             }
 
             var sender = _client.CreateSender(_options.EntityPath);
-            var message = new ServiceBusMessage(JsonSerializer.SerializeToUtf8Bytes(eventData))
+            var bytes = _serializer.Serialize(eventData!, typeof(TEvent));
+            var message = new ServiceBusMessage(bytes)
             {
                 Subject = typeof(TEvent).FullName
             };
-
             await sender.SendMessageAsync(message);
         }
 
@@ -67,7 +74,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
                     return;
                 }
 
-                var data = JsonSerializer.Deserialize<TEvent>(args.Message.Body);
+                var data = _serializer.Deserialize(args.Message.Body.ToArray(), typeof(TEvent)) as TEvent;
                 if (data != null)
                 {
                     if (_inbox != null)

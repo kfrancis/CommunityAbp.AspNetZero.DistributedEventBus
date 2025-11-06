@@ -11,32 +11,33 @@ using System.Linq;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
 
-// Refactored: defer resolving the outbox until StartAsync using config + factory.
 public class PollingOutboxSender : IOutboxSender, ISingletonDependency
 {
     private readonly ILogger<PollingOutboxSender> _logger;
     private readonly IDistributedEventBus _bus;
     private readonly AspNetZeroEventBusBoxesOptions _options;
     private readonly IIocResolver _resolver;
+    private readonly IEventSerializer _serializer;
     private CancellationTokenSource? _cts;
-    private OutboxConfig? _config;
     private IEventOutbox? _outbox; // resolved lazily per StartAsync
+    private Task? _loop;
 
     public PollingOutboxSender(
         ILogger<PollingOutboxSender> logger,
         IDistributedEventBus bus,
         AspNetZeroEventBusBoxesOptions options,
-        IIocResolver resolver)
+        IIocResolver resolver,
+        IEventSerializer serializer)
     {
         _logger = logger;
         _bus = bus;
         _options = options;
         _resolver = resolver;
+        _serializer = serializer;
     }
 
     public Task StartAsync(OutboxConfig outboxConfig, CancellationToken cancellationToken = default)
     {
-        _config = outboxConfig;
         _outbox = ResolveOutbox(outboxConfig);
         if (_outbox == null)
         {
@@ -44,13 +45,12 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
             return Task.CompletedTask;
         }
         _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _ = RunAsync(_cts.Token);
+        _loop = RunAsync(_cts.Token);
         return Task.CompletedTask;
     }
 
     private IEventOutbox? ResolveOutbox(OutboxConfig cfg)
     {
-        // Prefer factory if provided
         if (cfg.Factory != null)
         {
             try
@@ -68,13 +68,11 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
         if (impl == null) return TrySingleInterfaceRegistration();
         if (!typeof(IEventOutbox).IsAssignableFrom(impl)) return null;
 
-        // If concrete registered resolve directly
         if (_resolver.IsRegistered(impl))
         {
             try { return (IEventOutbox)_resolver.Resolve(impl); } catch (Exception ex) { _logger.LogError(ex, "Failed to resolve concrete outbox {Type}", impl.FullName); }
         }
 
-        // If interface registered and only one handler, resolve interface
         if (_resolver.IsRegistered<IEventOutbox>())
         {
             try
@@ -88,7 +86,6 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
             }
         }
 
-        // Attempt dynamic registration if ctor dependencies resolvable
         try
         {
             var ctor = impl.GetConstructors(BindingFlags.Public | BindingFlags.Instance)
@@ -141,14 +138,14 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
             if (_outbox == null)
             {
                 await Task.Delay(_options.OutboxPollingInterval, ct);
-                continue; // idle until resolved (should not happen unless resolution failed)
+                continue;
             }
             try
             {
                 var pending = await _outbox.GetPendingAsync(_options.OutboxBatchSize, ct);
                 foreach (var evt in pending)
                 {
-                    var type = Type.GetType(evt.EventName);
+                    var type = _serializer.ResolveType(evt.EventName);
                     if (type == null)
                     {
                         await SafeMarkFailed(evt.Id, "Type not found", ct);
@@ -156,11 +153,15 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
                     }
                     try
                     {
-                        var obj = System.Text.Json.JsonSerializer.Deserialize(evt.EventData, type);
+                        var obj = _serializer.Deserialize(evt.EventData, type);
                         if (obj != null)
                         {
                             await _bus.PublishAsync(type, obj, onUnitOfWorkComplete: false, useOutbox: false);
                             await SafeMarkSent(evt.Id, ct);
+                        }
+                        else
+                        {
+                            await SafeMarkFailed(evt.Id, "Deserialization returned null", ct);
                         }
                     }
                     catch (Exception ex)
@@ -175,7 +176,11 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
                 _logger.LogError(ex, "Outbox polling failure");
             }
 
-            await Task.Delay(_options.OutboxPollingInterval, ct);
+            try
+            {
+                await Task.Delay(_options.OutboxPollingInterval, ct);
+            }
+            catch (OperationCanceledException) { }
         }
     }
 
@@ -188,9 +193,13 @@ public class PollingOutboxSender : IOutboxSender, ISingletonDependency
         try { await _outbox!.MarkFailedAsync(id, reason, ct); } catch (Exception ex) { _logger.LogDebug(ex, "MarkFailed failed {Id}", id); }
     }
 
-    public Task StopAsync(CancellationToken cancellationToken = default)
+    public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        _cts?.Cancel();
-        return Task.CompletedTask;
+        if (_cts == null) return;
+        _cts.Cancel();
+        if (_loop != null)
+        {
+            try { await _loop; } catch (OperationCanceledException) { }
+        }
     }
 }

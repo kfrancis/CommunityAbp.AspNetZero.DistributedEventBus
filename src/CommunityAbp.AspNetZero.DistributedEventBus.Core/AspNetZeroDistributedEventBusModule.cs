@@ -2,6 +2,8 @@ using Abp.Modules;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using Abp.Dependency;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Serialization;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core;
 
@@ -17,6 +19,11 @@ public class AspNetZeroDistributedEventBusModule : AbpModule
         if (!IocManager.IsRegistered<AspNetZeroEventBusBoxesOptions>())
         {
             IocManager.Register<AspNetZeroEventBusBoxesOptions>(DependencyLifeStyle.Singleton);
+        }
+        // Register serializer singleton
+        if (!IocManager.IsRegistered<IEventSerializer>())
+        {
+            IocManager.Register<IEventSerializer, DefaultEventSerializer>(DependencyLifeStyle.Singleton);
         }
         IocManager.Register<IOutboxSender, PollingOutboxSender>(DependencyLifeStyle.Singleton);
         IocManager.Register<IInboxProcessor, PollingInboxProcessor>(DependencyLifeStyle.Singleton);
