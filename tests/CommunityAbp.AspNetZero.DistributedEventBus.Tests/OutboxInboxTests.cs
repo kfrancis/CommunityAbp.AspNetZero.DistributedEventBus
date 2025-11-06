@@ -41,11 +41,24 @@ public class OutboxInboxTests : DistributedEventBusTests
 
         await bus.PublishAsync(new TestEvent(), useOutbox: true);
 
-        var sender = Resolve<IOutboxSender>();  
-        await sender.StartAsync(new Core.Configuration.OutboxConfig());
-        // wait briefly for polling loop
-        await Task.Delay(3000);
-        Assert.True(handled);
+        // Speed up polling for the test
+        var boxOptions = Resolve<AspNetZeroEventBusBoxesOptions>();
+        boxOptions.OutboxPollingInterval = TimeSpan.FromMilliseconds(150);
+
+        var options = Resolve<DistributedEventBusOptions>();
+        var sender = Resolve<IOutboxSender>();
+
+        await sender.StartAsync(options.Outboxes["Default"]);
+
+        // Actively wait until handled or timeout
+        var timeout = TimeSpan.FromSeconds(5);
+        var start = DateTime.UtcNow;
+        while (!handled && DateTime.UtcNow - start < timeout)
+        {
+            await Task.Delay(100);
+        }
+
+        Assert.True(handled, "Event was not dispatched from outbox within timeout.");
         await sender.StopAsync();
     }
 

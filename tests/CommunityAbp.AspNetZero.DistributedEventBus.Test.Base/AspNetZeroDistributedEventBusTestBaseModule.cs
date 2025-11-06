@@ -46,7 +46,7 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
             IocManager.Register<IEventOutbox, EfCoreEventOutbox>(DependencyLifeStyle.Transient);
 
         if (!IocManager.IsRegistered<IDistributedEventBus>())
-            IocManager.Register<IDistributedEventBus, DistributedEventBusBase>(DependencyLifeStyle.Transient);
+            IocManager.Register<IDistributedEventBus, DistributedEventBusBase>(DependencyLifeStyle.Singleton);
 
         if (!IocManager.IsRegistered<DbContextOptions<DistributedEventBusDbContext>>())
         {
