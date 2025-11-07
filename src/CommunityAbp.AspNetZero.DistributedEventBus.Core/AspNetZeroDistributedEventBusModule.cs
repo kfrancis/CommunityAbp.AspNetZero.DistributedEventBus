@@ -1,3 +1,4 @@
+using System;
 using Abp.Modules;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using Abp.Dependency;
@@ -6,6 +7,7 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Serialization;
 using System.Linq;
 using Abp.Events.Bus.Handlers;
+using System.Reflection;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core;
 
@@ -34,17 +36,40 @@ public class AspNetZeroDistributedEventBusModule : AbpModule
     public override void Initialize()
     {
         IocManager.RegisterAssemblyByConvention(typeof(AspNetZeroDistributedEventBusModule).Assembly);
+    }
 
-        // Populate handlers list for auto subscription (similar to ABP behavior)
+    public override void PostInitialize()
+    {
+        // After all modules initialized, scan all loaded assemblies for distributed handlers.
         var options = IocManager.Resolve<DistributedEventBusOptions>();
-        var handlerTypes = typeof(AspNetZeroDistributedEventBusModule).Assembly.GetTypes()
-            .Where(t => !t.IsAbstract && !t.IsInterface && typeof(IEventHandler).IsAssignableFrom(t))
-            .ToList();
-        foreach (var ht in handlerTypes)
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+
+        foreach (var assembly in assemblies)
         {
-            if (!options.Handlers.Contains(ht))
+            Type[] types;
+            try { types = assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException ex) { types = ex.Types.Where(t => t != null).ToArray()!; }
+
+            foreach (var t in types)
             {
-                options.Handlers.Add(ht);
+                if (t == null || t.IsAbstract || t.IsInterface) continue;
+                // Must implement at least one IDistributedEventHandler<> generic interface
+                var distributedInterfaces = t.GetInterfaces().Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>)).ToArray();
+                if (distributedInterfaces.Length == 0) continue;
+
+                // Register handler type if not already registered in IoC.
+                // Use Singleton because current bus implementation captures the handler instance at subscription time;
+                // using transient would capture an arbitrary single instance and confuse expectations (especially in tests).
+                if (!IocManager.IsRegistered(t))
+                {
+                    IocManager.Register(t, DependencyLifeStyle.Singleton);
+                }
+
+                // Add to options.Handlers for auto subscription when bus constructs
+                if (!options.Handlers.Contains(t))
+                {
+                    options.Handlers.Add(t);
+                }
             }
         }
     }

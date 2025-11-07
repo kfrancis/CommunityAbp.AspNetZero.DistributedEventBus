@@ -56,6 +56,8 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                 {
                     continue;
                 }
+
+                // Always resolve the singleton instance (handler types are registered Singleton in PostInitialize)
                 var handlerInstance = IocManager.Resolve(handlerType);
                 if (handlerInstance == null)
                 {
@@ -72,16 +74,18 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                 {
                     var eventType = di.GetGenericArguments()[0];
 
-                    // Build generic Subscribe<TEvent> method
-                    var subscribeMethod = typeof(DistributedEventBusBase)
-                        .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                        .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.IsGenericType);
-                    if (subscribeMethod == null)
+                    // Directly call generic Subscribe<TEvent> defined below rather than slow reflection search
+                    var method = typeof(DistributedEventBusBase).GetMethod(nameof(Subscribe), BindingFlags.Public | BindingFlags.Instance, null, new[] { di }, null);
+                    if (method == null)
                     {
-                        continue;
+                        // Fallback to previous discovery if signature differs
+                        method = typeof(DistributedEventBusBase)
+                            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                            .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
                     }
+                    if (method == null) continue;
 
-                    var genericSubscribe = subscribeMethod.MakeGenericMethod(eventType);
+                    var genericSubscribe = method.MakeGenericMethod(eventType);
                     var disposableObj = genericSubscribe.Invoke(this, new[] { handlerInstance });
                     if (disposableObj is IDisposable disposable)
                     {
