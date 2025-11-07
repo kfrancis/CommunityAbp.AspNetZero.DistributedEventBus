@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using System.IO;
+using System; // added for Environment
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
 {
@@ -26,7 +27,10 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
 
         private static IConfigurationRoot GetConfiguration()
         {
-            return AppConfigurations.Get(Directory.GetCurrentDirectory(), addUserSecrets: true);
+            // Incorporate environment name if present
+            var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT")
+                                   ?? Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT");
+            return AppConfigurations.Get(Directory.GetCurrentDirectory(), environmentName, addUserSecrets: true);
         }
 
         private AzureServiceBusOptions GetAzureOptions(IConfigurationRoot configuration)
