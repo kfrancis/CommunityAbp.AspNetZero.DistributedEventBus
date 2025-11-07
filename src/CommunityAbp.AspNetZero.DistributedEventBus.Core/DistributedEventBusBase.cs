@@ -10,6 +10,7 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using System.Threading;
 using Abp.Dependency;
 using System.Collections.Immutable;
+using System.Reflection;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core;
 
@@ -26,12 +27,73 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     private readonly Dictionary<string, IEventOutbox> _outboxCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly IIocManager IocManager;
     private readonly IEventSerializer _serializer;
+    private readonly List<IDisposable> _autoSubscriptions = new(); // track auto subscriptions for disposal
 
     public DistributedEventBusBase(DistributedEventBusOptions options, IIocManager iocManager, IEventSerializer serializer)
     {
         _options = options;
         IocManager = iocManager;
         _serializer = serializer;
+
+        // Auto-subscribe any handler types registered in options that implement IDistributedEventHandler<TEvent>
+        // Similar to ABP EventBus behavior.
+        TryAutoSubscribeRegisteredHandlers();
+    }
+
+    private void TryAutoSubscribeRegisteredHandlers()
+    {
+        if (_options.Handlers.Count == 0)
+        {
+            return; // nothing declared
+        }
+
+        foreach (var handlerType in _options.Handlers)
+        {
+            try
+            {
+                // Resolve handler instance (ignore if not registered)
+                if (!IocManager.IsRegistered(handlerType))
+                {
+                    continue;
+                }
+                var handlerInstance = IocManager.Resolve(handlerType);
+                if (handlerInstance == null)
+                {
+                    continue;
+                }
+
+                // For each implemented distributed handler interface subscribe
+                var distributedInterfaces = handlerType
+                    .GetInterfaces()
+                    .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
+                    .ToArray();
+
+                foreach (var di in distributedInterfaces)
+                {
+                    var eventType = di.GetGenericArguments()[0];
+
+                    // Build generic Subscribe<TEvent> method
+                    var subscribeMethod = typeof(DistributedEventBusBase)
+                        .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                        .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.IsGenericType);
+                    if (subscribeMethod == null)
+                    {
+                        continue;
+                    }
+
+                    var genericSubscribe = subscribeMethod.MakeGenericMethod(eventType);
+                    var disposableObj = genericSubscribe.Invoke(this, new[] { handlerInstance });
+                    if (disposableObj is IDisposable disposable)
+                    {
+                        _autoSubscriptions.Add(disposable);
+                    }
+                }
+            }
+            catch
+            {
+                // Swallow errors so one bad handler does not prevent others; optionally log.
+            }
+        }
     }
 
     public virtual Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
@@ -235,6 +297,11 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             {
                 _handlers = ImmutableDictionary<Type, ImmutableList<Func<object, Task>>>.Empty;
                 _outboxCache.Clear();
+                foreach (var sub in _autoSubscriptions)
+                {
+                    try { sub.Dispose(); } catch { }
+                }
+                _autoSubscriptions.Clear();
             }
             _disposed = true;
         }

@@ -38,7 +38,19 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     }
 
     [Fact]
-    public async Task Subscribe_ShouldInvokeHandler_WhenEventIsPublished()
+    public async Task AutoSubscribe_ShouldInvokeHandler_WhenEventIsPublished()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        var handler = Resolve<AutoTestEventHandler>();
+        handler.Reset();
+
+        await bus.PublishAsync(new AutoTestEvent(), useOutbox: false);
+
+        Assert.Equal(1, handler.CallCount); // auto subscribed handler should have been invoked once
+    }
+
+    [Fact]
+    public async Task ManualSubscribe_StillWorks_WhenExplicitlySubscribing()
     {
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
