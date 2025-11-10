@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
 using System.Threading.Tasks;
 using Abp.Events.Bus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
@@ -31,6 +30,11 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     private readonly HashSet<Type> _pendingHandlers = new(); // handler types that failed to resolve earlier
     private bool _initialSubscriptionsAttempted;
 
+    // Marker types we treat as optional (skip auto-subscription if not resolvable)
+    private static readonly string[] OptionalHandlerTypeNames = new[] {"PatientManagement.Web.Common.BackgroundJobEventHub"};
+
+    private bool IsOptionalHandler(Type t) => OptionalHandlerTypeNames.Contains(t.FullName);
+
     public DistributedEventBusBase(DistributedEventBusOptions options, IIocManager iocManager, IEventSerializer serializer)
     {
         _options = options;
@@ -55,7 +59,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             {
                 if (!IocManager.IsRegistered(handlerType))
                 {
-                    _pendingHandlers.Add(handlerType);
+                    if (!IsOptionalHandler(handlerType)) _pendingHandlers.Add(handlerType);
                     continue;
                 }
 
@@ -66,13 +70,13 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                 }
                 catch
                 {
-                    _pendingHandlers.Add(handlerType); // dependencies missing -> retry later
+                    if (!IsOptionalHandler(handlerType)) _pendingHandlers.Add(handlerType);
                     continue;
                 }
 
                 if (handlerInstance == null)
                 {
-                    _pendingHandlers.Add(handlerType);
+                    if (!IsOptionalHandler(handlerType)) _pendingHandlers.Add(handlerType);
                     continue;
                 }
 
@@ -102,30 +106,14 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                     {
                         var genericSubscribe = method.MakeGenericMethod(eventType);
                         var disposableObj = genericSubscribe.Invoke(this, new[] { handlerInstance });
-                        if (disposableObj is IDisposable disposable)
-                        {
-                            _autoSubscriptions.Add(disposable);
-                        }
+                        if (disposableObj is IDisposable disposable) _autoSubscriptions.Add(disposable);
                     }
-                    catch
-                    {
-                        allSubscribed = false; // mark for retry
-                    }
+                    catch { allSubscribed = false; }
                 }
 
-                if (!allSubscribed)
-                {
-                    _pendingHandlers.Add(handlerType);
-                }
-                else
-                {
-                    _pendingHandlers.Remove(handlerType);
-                }
+                if (!allSubscribed && !IsOptionalHandler(handlerType)) _pendingHandlers.Add(handlerType); else _pendingHandlers.Remove(handlerType);
             }
-            catch
-            {
-                _pendingHandlers.Add(handlerType); // swallow & mark for later retry
-            }
+            catch { if (!IsOptionalHandler(handlerType)) _pendingHandlers.Add(handlerType); }
         }
     }
 
@@ -135,6 +123,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
         var snapshot = _pendingHandlers.ToArray();
         foreach (var handlerType in snapshot)
         {
+            if (IsOptionalHandler(handlerType)) { _pendingHandlers.Remove(handlerType); continue; }
             try
             {
                 if (!IocManager.IsRegistered(handlerType)) continue;
