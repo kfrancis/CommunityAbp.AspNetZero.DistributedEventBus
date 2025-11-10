@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json; // kept for potential fallback
+
 using System.Threading.Tasks;
 using Abp.Events.Bus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
@@ -77,9 +77,9 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                 }
 
                 var distributedInterfaces = handlerType
-                    .GetInterfaces()
-                    .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
-                    .ToArray();
+                .GetInterfaces()
+                .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
+                .ToArray();
 
                 var allSubscribed = true;
                 foreach (var di in distributedInterfaces)
@@ -89,8 +89,8 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                     if (method == null)
                     {
                         method = typeof(DistributedEventBusBase)
-                            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                            .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
+                        .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                        .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
                     }
                     if (method == null)
                     {
@@ -142,9 +142,9 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                 if (instance == null) continue;
 
                 var distributedInterfaces = handlerType
-                    .GetInterfaces()
-                    .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
-                    .ToArray();
+                .GetInterfaces()
+                .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
+                .ToArray();
 
                 var allSubscribed = true;
                 foreach (var di in distributedInterfaces)
@@ -154,8 +154,8 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                     if (method == null)
                     {
                         method = typeof(DistributedEventBusBase)
-                            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                            .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
+                        .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                        .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
                     }
                     if (method == null)
                     {
@@ -293,16 +293,26 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
 
     private Task DispatchAsync(Type eventType, object eventData)
     {
-        ImmutableList<Func<object, Task>> handlers;
-        if (_handlers.TryGetValue(eventType, out handlers))
+        // Polymorphic dispatch: deliver to handlers registered for the concrete type AND any base types.
+        // This enables a handler subscribed to a base class (e.g. BackgroundJobEventBase) to receive all derived events
+        // without needing explicit interface registrations per subclass. Interfaces are ignored for now to keep scope minimal.
+        var collected = new List<Func<object, Task>>();
+        var current = eventType;
+        while (current != null && current != typeof(object))
         {
-            if (handlers.Count == 1)
+            if (_handlers.TryGetValue(current, out var list) && list.Count > 0)
             {
-                return handlers[0](eventData);
+                collected.AddRange(list);
             }
-            return Task.WhenAll(handlers.Select(h => h(eventData)));
+            current = current.BaseType;
         }
-        return Task.CompletedTask;
+
+        if (collected.Count == 0) return Task.CompletedTask;
+
+        // Remove duplicates (same delegate may appear if explicitly subscribed for multiple levels)
+        var distinct = collected.Distinct().ToList();
+        if (distinct.Count == 1) return distinct[0](eventData);
+        return Task.WhenAll(distinct.Select(h => h(eventData)));
     }
 
     public virtual IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler) where TEvent : class
