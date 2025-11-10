@@ -28,20 +28,22 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     private readonly IIocManager IocManager;
     private readonly IEventSerializer _serializer;
     private readonly List<IDisposable> _autoSubscriptions = new(); // track auto subscriptions for disposal
+    private readonly HashSet<Type> _pendingHandlers = new(); // handler types that failed to resolve earlier
+    private bool _initialSubscriptionsAttempted;
 
     public DistributedEventBusBase(DistributedEventBusOptions options, IIocManager iocManager, IEventSerializer serializer)
     {
         _options = options;
         IocManager = iocManager;
         _serializer = serializer;
-
-        // Auto-subscribe any handler types registered in options that implement IDistributedEventHandler<TEvent>
-        // Similar to ABP EventBus behavior.
-        TryAutoSubscribeRegisteredHandlers();
     }
+
+    // Deferred initialization entry point
+    public void InitializeSubscriptions() => TryAutoSubscribeRegisteredHandlers();
 
     private void TryAutoSubscribeRegisteredHandlers()
     {
+        _initialSubscriptionsAttempted = true;
         if (_options.Handlers.Count == 0)
         {
             return; // nothing declared
@@ -51,64 +53,152 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
         {
             try
             {
-                // Resolve handler instance (ignore if not registered)
                 if (!IocManager.IsRegistered(handlerType))
                 {
+                    _pendingHandlers.Add(handlerType);
                     continue;
                 }
 
-                // Always resolve the singleton instance (handler types are registered Singleton in PostInitialize)
-                var handlerInstance = IocManager.Resolve(handlerType);
+                object handlerInstance;
+                try
+                {
+                    handlerInstance = IocManager.Resolve(handlerType);
+                }
+                catch
+                {
+                    _pendingHandlers.Add(handlerType); // dependencies missing -> retry later
+                    continue;
+                }
+
                 if (handlerInstance == null)
                 {
+                    _pendingHandlers.Add(handlerType);
                     continue;
                 }
 
-                // For each implemented distributed handler interface subscribe
                 var distributedInterfaces = handlerType
                     .GetInterfaces()
                     .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
                     .ToArray();
 
+                var allSubscribed = true;
                 foreach (var di in distributedInterfaces)
                 {
                     var eventType = di.GetGenericArguments()[0];
-
-                    // Directly call generic Subscribe<TEvent> defined below rather than slow reflection search
                     var method = typeof(DistributedEventBusBase).GetMethod(nameof(Subscribe), BindingFlags.Public | BindingFlags.Instance, null, new[] { di }, null);
                     if (method == null)
                     {
-                        // Fallback to previous discovery if signature differs
                         method = typeof(DistributedEventBusBase)
                             .GetMethods(BindingFlags.Public | BindingFlags.Instance)
                             .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
                     }
-                    if (method == null) continue;
-
-                    var genericSubscribe = method.MakeGenericMethod(eventType);
-                    var disposableObj = genericSubscribe.Invoke(this, new[] { handlerInstance });
-                    if (disposableObj is IDisposable disposable)
+                    if (method == null)
                     {
-                        _autoSubscriptions.Add(disposable);
+                        allSubscribed = false;
+                        continue;
                     }
+
+                    try
+                    {
+                        var genericSubscribe = method.MakeGenericMethod(eventType);
+                        var disposableObj = genericSubscribe.Invoke(this, new[] { handlerInstance });
+                        if (disposableObj is IDisposable disposable)
+                        {
+                            _autoSubscriptions.Add(disposable);
+                        }
+                    }
+                    catch
+                    {
+                        allSubscribed = false; // mark for retry
+                    }
+                }
+
+                if (!allSubscribed)
+                {
+                    _pendingHandlers.Add(handlerType);
+                }
+                else
+                {
+                    _pendingHandlers.Remove(handlerType);
                 }
             }
             catch
             {
-                // Swallow errors so one bad handler does not prevent others; optionally log.
+                _pendingHandlers.Add(handlerType); // swallow & mark for later retry
             }
         }
+    }
+
+    private void RetryPendingHandlers()
+    {
+        if (_pendingHandlers.Count == 0) return;
+        var snapshot = _pendingHandlers.ToArray();
+        foreach (var handlerType in snapshot)
+        {
+            try
+            {
+                if (!IocManager.IsRegistered(handlerType)) continue;
+                var instance = IocManager.Resolve(handlerType);
+                if (instance == null) continue;
+
+                var distributedInterfaces = handlerType
+                    .GetInterfaces()
+                    .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IDistributedEventHandler<>))
+                    .ToArray();
+
+                var allSubscribed = true;
+                foreach (var di in distributedInterfaces)
+                {
+                    var eventType = di.GetGenericArguments()[0];
+                    var method = typeof(DistributedEventBusBase).GetMethod(nameof(Subscribe), BindingFlags.Public | BindingFlags.Instance, null, new[] { di }, null);
+                    if (method == null)
+                    {
+                        method = typeof(DistributedEventBusBase)
+                            .GetMethods(BindingFlags.Public | BindingFlags.Instance)
+                            .FirstOrDefault(m => m.Name == nameof(Subscribe) && m.GetGenericArguments().Length == 1 && m.GetParameters().Length == 1);
+                    }
+                    if (method == null)
+                    {
+                        allSubscribed = false;
+                        continue;
+                    }
+                    try
+                    {
+                        var genericSubscribe = method.MakeGenericMethod(eventType);
+                        var disposableObj = genericSubscribe.Invoke(this, new[] { instance });
+                        if (disposableObj is IDisposable d) _autoSubscriptions.Add(d);
+                    }
+                    catch { allSubscribed = false; }
+                }
+                if (allSubscribed)
+                {
+                    _pendingHandlers.Remove(handlerType);
+                }
+            }
+            catch { }
+        }
+    }
+
+    private void EnsureSubscriptionsInitialized()
+    {
+        if (!_initialSubscriptionsAttempted)
+        {
+            TryAutoSubscribeRegisteredHandlers();
+        }
+        RetryPendingHandlers();
     }
 
     public virtual Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
     {
         if (eventData == null) throw new ArgumentNullException(nameof(eventData));
+        EnsureSubscriptionsInitialized();
         return PublishAsync(typeof(TEvent), eventData, onUnitOfWorkComplete, useOutbox);
     }
 
     public virtual async Task PublishAsync(Type eventType, object eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true)
     {
         if (eventType == null) throw new ArgumentNullException(nameof(eventType));
+        EnsureSubscriptionsInitialized();
 
         if (!useOutbox)
         {
@@ -122,8 +212,8 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
         }
 
         var matchingOutboxes = _options.Outboxes
-            .Where(kv => (kv.Value.Selector == null || kv.Value.Selector(eventType)))
-            .ToList();
+        .Where(kv => (kv.Value.Selector == null || kv.Value.Selector(eventType)))
+        .ToList();
 
         if (matchingOutboxes.Count == 0)
         {
@@ -146,10 +236,10 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
             }
 
             var outgoing = new OutgoingEventInfo(
-                Guid.NewGuid(),
-                typeIdentifier,
-                bytes,
-                DateTime.UtcNow);
+            Guid.NewGuid(),
+            typeIdentifier,
+            bytes,
+            DateTime.UtcNow);
 
             await outbox.AddAsync(outgoing, CancellationToken.None);
         }
@@ -217,6 +307,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
 
     public virtual IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler) where TEvent : class
     {
+        EnsureSubscriptionsInitialized();
         var eventType = typeof(TEvent);
         async Task Wrapper(object e) => await handler.HandleEventAsync((TEvent)e);
 
@@ -243,6 +334,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     public async Task PublishFromOutboxAsync(OutgoingEventInfo outgoingEvent, OutboxConfig outboxConfig)
     {
         if (outgoingEvent == null) throw new ArgumentNullException(nameof(outgoingEvent));
+        EnsureSubscriptionsInitialized();
         var type = _serializer.ResolveType(outgoingEvent.EventName);
         if (type == null) return;
         try
@@ -270,6 +362,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     public async Task ProcessFromInboxAsync(IncomingEventInfo incomingEvent, InboxConfig inboxConfig)
     {
         if (incomingEvent == null) throw new ArgumentNullException(nameof(incomingEvent));
+        EnsureSubscriptionsInitialized();
         var type = _serializer.ResolveType(incomingEvent.EventName);
         if (type == null) return;
         try
@@ -306,6 +399,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
                     try { sub.Dispose(); } catch { }
                 }
                 _autoSubscriptions.Clear();
+                _pendingHandlers.Clear();
             }
             _disposed = true;
         }
@@ -318,19 +412,19 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
     }
 
     public Task PublishAsync<TEvent>(TEvent eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true) where TEvent : class
-        => PublishAsync(eventData!, onUnitOfWorkComplete, useOutbox);
+    => PublishAsync(eventData!, onUnitOfWorkComplete, useOutbox);
 
     public Task PublishAsync(Type eventType, object eventData, CancellationToken cancellationToken, bool onUnitOfWorkComplete = true, bool useOutbox = true)
-        => PublishAsync(eventType, eventData, onUnitOfWorkComplete, useOutbox);
+    => PublishAsync(eventType, eventData, onUnitOfWorkComplete, useOutbox);
 
     public IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler, CancellationToken cancellationToken) where TEvent : class
-        => Subscribe(handler);
+    => Subscribe(handler);
 
 #if !NETSTANDARD2_0
-    public ValueTask DisposeAsync()
-    {
-        Dispose();
-        return ValueTask.CompletedTask;
-    }
+ public ValueTask DisposeAsync()
+ {
+ Dispose();
+ return ValueTask.CompletedTask;
+ }
 #endif
 }

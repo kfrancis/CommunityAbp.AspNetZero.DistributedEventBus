@@ -72,5 +72,6 @@ public class AspNetZeroDistributedEventBusModule : AbpModule
                 }
             }
         }
+        // Removed eager subscription initialization to allow tests to register late dependencies (e.g. SignalR hub context) before handler resolution.
     }
 }
