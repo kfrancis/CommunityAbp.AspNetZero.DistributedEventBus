@@ -34,11 +34,13 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
 
                 b.Property<string>("EventName")
                     .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    .HasMaxLength(200)
+                    .HasColumnType("nvarchar(200)");
 
                 b.Property<string>("EventType")
                     .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    .HasMaxLength(200)
+                    .HasColumnType("nvarchar(200)");
 
                 b.Property<string>("Error")
                     .HasColumnType("nvarchar(max)");
@@ -56,6 +58,11 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
                 b.Property<int>("RetryCount")
                     .HasColumnType("int");
 
+                b.Property<byte[]>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("rowversion");
+
                 b.Property<string>("Status")
                     .IsRequired()
                     .HasMaxLength(40)
@@ -63,8 +70,14 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
 
                 b.HasKey("Id");
 
+                b.HasIndex("CorrelationId")
+                    .HasDatabaseName("IX_InboxMessages_CorrelationId");
+
                 b.HasIndex("MessageId")
                     .IsUnique();
+
+                b.HasIndex("Status", "ReceivedAt")
+                    .HasDatabaseName("IX_InboxMessages_Status_ReceivedAt");
 
                 b.ToTable("InboxMessages");
             });
@@ -87,17 +100,24 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
 
                 b.Property<string>("EventName")
                     .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    .HasMaxLength(200)
+                    .HasColumnType("nvarchar(200)");
 
                 b.Property<string>("EventType")
                     .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    .HasMaxLength(200)
+                    .HasColumnType("nvarchar(200)");
 
                 b.Property<string>("Error")
                     .HasColumnType("nvarchar(max)");
 
                 b.Property<int>("RetryCount")
                     .HasColumnType("int");
+
+                b.Property<byte[]>("RowVersion")
+                    .IsConcurrencyToken()
+                    .ValueGeneratedOnAddOrUpdate()
+                    .HasColumnType("rowversion");
 
                 b.Property<DateTime?>("SentAt")
                     .HasColumnType("datetime2");
@@ -108,6 +128,12 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
                     .HasColumnType("nvarchar(40)");
 
                 b.HasKey("Id");
+
+                b.HasIndex("CorrelationId")
+                    .HasDatabaseName("IX_OutboxMessages_CorrelationId");
+
+                b.HasIndex("Status", "CreatedAt")
+                    .HasDatabaseName("IX_OutboxMessages_Status_CreatedAt");
 
                 b.ToTable("OutboxMessages");
             });
