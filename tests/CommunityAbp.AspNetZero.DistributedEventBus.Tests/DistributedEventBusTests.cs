@@ -34,30 +34,17 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     public async Task PublishAsync_ShouldPublishDirectly_WhenNotUsingOutbox()
     {
         var bus = Resolve<IDistributedEventBus>();
+        bus.Subscribe(new TestEventHandler(() => { }));
         await bus.PublishAsync(new TestEvent(), useOutbox: false);
     }
 
     [Fact]
-    public async Task AutoSubscribe_ShouldInvokeHandler_WhenEventIsPublished()
-    {
-        var bus = Resolve<IDistributedEventBus>();
-        var handler = Resolve<AutoTestEventHandler>();
-        handler.Reset();
-
-        await bus.PublishAsync(new AutoTestEvent(), useOutbox: false);
-
-        Assert.Equal(1, handler.CallCount); // auto subscribed handler should have been invoked once
-    }
-
-    [Fact]
-    public async Task ManualSubscribe_StillWorks_WhenExplicitlySubscribing()
+    public async Task ManualSubscribe_ShouldInvokeHandler_WhenEventIsPublished()
     {
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
-
         bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
         await bus.PublishAsync(new TestEvent(), useOutbox: false);
-
         Assert.True(handled);
     }
 
@@ -67,12 +54,9 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
         var handler = new TestEventHandler(() => handled = true);
-
         var subscription = bus.Subscribe<TestEvent>(handler);
         subscription.Dispose();
-
         await bus.PublishAsync(new TestEvent(), useOutbox: false);
-
         Assert.False(handled);
     }
 

@@ -3,8 +3,8 @@
 Reliable distributed domain events for ABP / AspNet Zero using the Inbox / Outbox pattern and (optionally) Azure Service Bus.
 
 Targets:
-- .NET Standard 2.0 (broad compatibility)
-- .NET 8 (modern runtime)
+- .NET Standard2.0 (broad compatibility)
+- .NET8 (modern runtime)
 
 ---
 ## Key Features
@@ -14,42 +14,84 @@ Targets:
 - Configurable multiple Outboxes / Inboxes with filtering predicates
 - Polling sender / processor manager abstractions (`IOutboxSender`, `IInboxProcessor`)
 - Event boxing interfaces (`ISupportsEventBoxes`) for replay / reliability
-- Strongly typed async handlers (`IDistributedEventHandler<TEvent>`) + adapter for ABP pipeline
+- Strongly typed async handlers (`IDistributedEventHandler<TEvent>`)
 - Optional stable logical names via `[EventName]` attribute
-- CancellationToken‑ready method overloads (tokens currently reserved for future async orchestration)
+- Manual, explicit subscription model (no auto-discovery / auto-subscribe)
 - Test friendly (replace the bus with an in‑memory implementation)
 
-> NOTE: Current Azure implementation publishes directly to Service Bus even when `useOutbox == true` (it first calls base which may persist to an outbox, then always sends). If you intend a strict store‑and‑forward flow, adapt that behavior.
+> NOTE: Current Azure implementation publishes directly to Service Bus even when `useOutbox == true` (it first calls base which may persist to an outbox, then sends immediately). If you intend a strict store‑and‑forward flow, adapt that behavior.
 
 ---
 ## Architecture Overview
 ```
-Domain Code  -->  IDistributedEventBus.PublishAsync
-   |                    |
-   | (useOutbox=true)   | (useOutbox=false)
-   v                    v
- Outbox (DB)        Immediate Dispatch ---------------> Local in‑memory handlers
-   |                             \
-   | (IOutboxSender)              \
-   v                               v
-Azure Service Bus  <---------  AzureServiceBusDistributedEventBus
-   |
-   |  (subscription / queue)
-   v
-Inbox (DB)  <-- (IInboxProcessor pulls) --> Local Dispatch -> Handlers
+Publisher (Hangfire / API / etc.)
+ => IDistributedEventBus.PublishAsync(event, useOutbox?)
+ (useOutbox=true) -> Persist to Outbox(s) -> Outbox Sender -> Broker (Azure Service Bus)
+ (useOutbox=false) -> Immediate Dispatch -> (local handlers if any) + Direct Broker send (Azure impl)
+
+Azure Service Bus Topic / Queue
+ -> Consumer application subscription
+ -> Message received -> (optional Inbox persist) -> Dispatch to manually subscribed handlers
 ```
 
-### Core Concepts
-| Concept | Implementation / Type | Notes |
-|--------|------------------------|-------|
-| Distributed Bus | `DistributedEventBusBase` | Maintains in‑memory handler map; manages outbox/inbox dispatch.
-| Azure Transport | `AzureServiceBusDistributedEventBus` | Wraps Service Bus client & subscription processor.
-| Outbox Config | `OutboxConfig` (dictionary on `DistributedEventBusOptions.Outboxes`) | `Selector` decides which event types are captured.
-| Inbox Config | `InboxConfig` (dictionary on `DistributedEventBusOptions.Inboxes`) | `EventSelector` decides which event types are stored.
-| Outgoing Event | `OutgoingEventInfo` | Serialized as UTF‑8 JSON bytes.
-| Incoming Event | `IncomingEventInfo` | Stored prior to handler dispatch (if inbox configured).
-| Event Naming | `[EventName("Logical.Name")]` | Falls back to `FullName` when attribute absent.
-| Handlers | `IDistributedEventHandler<TEvent>` | Always async; sync bridging via adapter.
+No implicit handler scanning: each consumer process decides which handlers to subscribe.
+
+---
+## Manual Subscription Model
+Auto-subscribe was removed to:
+- Avoid resolving optional dependencies (e.g. SignalR hubs) in publisher processes
+- Make handler activation explicit & environment-specific
+
+You must subscribe handlers manually at application initialization:
+```
+public override void OnApplicationInitialization(AbpApplicationInitializationContext ctx)
+{
+ var bus = IocManager.Resolve<IDistributedEventBus>();
+ var hubHandler = IocManager.Resolve<BackgroundJobEventHub>(); // implements IDistributedEventHandler<BackgroundJobEventBase>
+ bus.Subscribe<BackgroundJobEventBase>(hubHandler);
+}
+```
+
+Publisher processes (e.g. Hangfire) only reference event contracts and publish; they do not subscribe SignalR hubs or other consumer-only handlers.
+
+---
+## Publisher / Consumer Separation Example
+
+Create a shared contracts library:
+```
+public class UserNotificationEvent : EventData
+{
+ public Guid UserId { get; set; }
+ public string Message { get; set; } = string.Empty;
+}
+```
+
+Publisher (Hangfire):
+```
+await _bus.PublishAsync(new UserNotificationEvent { UserId = id, Message = "Welcome" }, useOutbox: false);
+```
+(No handler subscription; do NOT reference the SignalR hub assembly.)
+
+Consumer (MVC with SignalR):
+```
+public class NotificationsHub : Hub, IDistributedEventHandler<UserNotificationEvent>
+{
+ private readonly IHubContext<NotificationsHub> _context;
+ public NotificationsHub(IHubContext<NotificationsHub> context) => _context = context;
+ public async Task HandleEventAsync(UserNotificationEvent evt)
+ => await _context.Clients.User(evt.UserId.ToString()).SendCoreAsync("notification", new object[] { evt.Message });
+}
+
+public class MvcModule : AbpModule
+{
+ public override void OnApplicationInitialization(AbpApplicationInitializationContext context)
+ {
+ var bus = IocManager.Resolve<IDistributedEventBus>();
+ var hub = IocManager.Resolve<NotificationsHub>();
+ bus.Subscribe<UserNotificationEvent>(hub);
+ }
+}
+```
 
 ---
 ## Packages (Current Layout)
@@ -69,191 +111,128 @@ dotnet add package CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
 dotnet add package CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore
 ```
 
-Register ABP modules (simplified):
+Register ABP modules (consumer example):
 ```
 [DependsOn(
-    typeof(AspNetZeroDistributedEventBusModule),
-    typeof(AzureDistributedEventServiceBusModule), // if Azure transport
-    typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule) // if EF persistence
+ typeof(AspNetZeroDistributedEventBusModule),
+ typeof(AzureDistributedEventServiceBusModule), // Azure transport
+ typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule) // EF persistence (optional)
 )]
-public class MyAppModule : AbpModule
+public class ConsumerModule : AbpModule
 {
-    public override void PreInitialize()
-    {
-        var options = IocManager.Resolve<DistributedEventBusOptions>();
-
-        options.Outboxes.Configure("Default", o =>
-        {
-            o.DatabaseName = "Default"; // logical DB tag
-            o.ImplementationType = typeof(EfCoreEventOutbox); // implements IEventOutbox
-            o.Selector = eventType => true;
-            o.IsSendingEnabled = true;
-        });
-
-        options.Inboxes.Configure("Default", i =>
-        {
-            i.DatabaseName = "Default";
-            i.ImplementationType = typeof(EfCoreEventInbox); // implements IEventInbox
-            i.EventSelector = eventType => true;
-            i.IsProcessingEnabled = true;
-        });
-    }
+ public override void PreInitialize()
+ {
+ var options = IocManager.Resolve<DistributedEventBusOptions>();
+ options.Inboxes.Configure("Default", i =>
+ {
+ i.ImplementationType = typeof(EfCoreEventInbox);
+ i.EventSelector = _ => true;
+ i.IsProcessingEnabled = true;
+ });
+ }
+ public override void OnApplicationInitialization(AbpApplicationInitializationContext ctx)
+ {
+ var bus = IocManager.Resolve<IDistributedEventBus>();
+ var hub = IocManager.Resolve<NotificationsHub>();
+ bus.Subscribe<UserNotificationEvent>(hub);
+ }
 }
 ```
 
 `appsettings.json` snippet for Azure Service Bus:
 ```
 "AzureServiceBus": {
-  "ConnectionString": "Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=<KeyName>;SharedAccessKey=<Key>",
-  "EntityPath": "app-events",
-  "SubscriptionName": "default"
+ "ConnectionString": "Endpoint=sb://<namespace>.servicebus.windows.net/;SharedAccessKeyName=<KeyName>;SharedAccessKey=<Key>",
+ "EntityPath": "app-events", // topic or queue
+ "SubscriptionName": "consumer-app" // required for topic subscriptions
 }
 ```
 
 ---
 ## Using Your Production DbContext For Migrations (Recommended)
-Instead of maintaining a separate migrations history for the inbox/outbox tables, you can include them in your existing application DbContext so they live in the same database and evolve with your app schema.
-
-1. Reference the EF package (`CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore`).
-2. In your production DbContext add the DbSets:
+(Same as previous version; unchanged.)
+1. Reference the EF package.
+2. Add DbSets to your DbContext:
 ```
 public DbSet<OutboxMessage> OutboxMessages { get; set; }
 public DbSet<InboxMessage> InboxMessages { get; set; }
 ```
-3. Call the extension method in `OnModelCreating` (optionally pass a schema name):
+3. Call configuration in `OnModelCreating`:
 ```
-protected override void OnModelCreating(ModelBuilder modelBuilder)
-{
-    base.OnModelCreating(modelBuilder);
-    modelBuilder.ConfigureDistributedEventBus("dbo.DistributedEventBus"); // or omit schema
-}
+modelBuilder.ConfigureDistributedEventBus();
 ```
-4. Generate migrations from your production DbContext (NOT the library context):
-```
-dotnet ef migrations add AddInboxOutbox -p <YourDataProject> -s <YourStartupProject>
-dotnet ef database update -p <YourDataProject> -s <YourStartupProject>
-```
-5. Optional: Remove/ignore the library's own `DistributedEventBusDbContext` factory & migrations once transitioned (keep only if you still use isolated schema management).
-6. If you previously applied separate migrations, ensure the new combined migration does not duplicate existing tables (adjust with `HasAnnotation("Relational:TableName", ...)` or manual migration edits if needed).
-7. At startup you can ensure creation (optional, already handled in .Migrator project if applicable):
-```
-using var scope = app.Services.CreateScope();
-var db = scope.ServiceProvider.GetRequiredService<MyAppDbContext>();
-db.Database.Migrate();
-```
-
-This approach ensures a single migration chain, consistent transactional boundaries, and simpler deployment.
+4. Generate & apply migrations from your app's data project.
 
 ---
-## Production Setup (EF Core, Migrations & Background Processing)
-1. Connection string: Add a named connection string (e.g. `DistributedEventBus`) for SQL Server.
-2. Ensure module registration (`AspNetZeroDistributedEventEntityFrameworkCoreModule`) so `DistributedEventBusDbContext` is added.
-3. Migrations: This repo includes an initial migration (`InitialInboxOutbox`). If consuming as source, run:
-   - `dotnet ef database update -p src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore -s <YourHostProject>`
-   If consuming via NuGet and you want schema inside your app DB, either:
-   - Reference the EF project directly and run update, or
-   - Copy entities + create migrations in your own DbContext (preferred; see section above).
-4. Startup initialization: Optionally call `context.Database.Migrate()` early (e.g., in a hosted service) to auto create tables.
-5. Configure outbox & inbox (see Installation) and register implementations (`EfCoreEventOutbox`, `EfCoreEventInbox`).
-6. Start background loops:
+## Production Setup (Summary)
+1. Register modules.
+2. Configure Outboxes / Inboxes.
+3. Add hosted service to start polling (`IOutboxSender`, `IInboxProcessor`).
+4. Manually subscribe handlers at startup.
+5. Publish events from publishers (no handler dependencies required).
+
+Hosted service sample (unchanged):
 ```
 public class EventBoxesHostedService : IHostedService
 {
-    private readonly IOutboxSender _outboxSender;
-    private readonly IInboxProcessor _inboxProcessor;
-    private readonly DistributedEventBusOptions _opts;
-
-    public EventBoxesHostedService(IOutboxSender outboxSender, IInboxProcessor inboxProcessor, DistributedEventBusOptions opts)
-    {
-        _outboxSender = outboxSender;
-        _inboxProcessor = inboxProcessor;
-        _opts = opts;
-    }
-
-    public async Task StartAsync(CancellationToken ct)
-    {
-        foreach (var outbox in _opts.Outboxes.Values.Where(o => o.IsSendingEnabled))
-            await _outboxSender.StartAsync(outbox);
-        foreach (var inbox in _opts.Inboxes.Values.Where(i => i.IsProcessingEnabled))
-            await _inboxProcessor.StartAsync(inbox);
-    }
-
-    public async Task StopAsync(CancellationToken ct)
-    {
-        await _outboxSender.StopAsync();
-        await _inboxProcessor.StopAsync();
-    }
+ private readonly IOutboxSender _outbox;
+ private readonly IInboxProcessor _inbox;
+ private readonly DistributedEventBusOptions _opts;
+ public EventBoxesHostedService(IOutboxSender o, IInboxProcessor i, DistributedEventBusOptions opts)
+ { _outbox = o; _inbox = i; _opts = opts; }
+ public async Task StartAsync(CancellationToken ct)
+ {
+ foreach (var ob in _opts.Outboxes.Values.Where(x => x.IsSendingEnabled)) await _outbox.StartAsync(ob);
+ foreach (var ib in _opts.Inboxes.Values.Where(x => x.IsProcessingEnabled)) await _inbox.StartAsync(ib);
+ }
+ public async Task StopAsync(CancellationToken ct)
+ { await _outbox.StopAsync(); await _inbox.StopAsync(); }
 }
 ```
-7. Service registration (example):
-```
-services.AddHostedService<EventBoxesHostedService>();
-```
-8. Idempotency: Inbox enforces unique `MessageId` index. Provide stable broker message IDs.
-9. Correlation IDs: Set via `OutgoingEventInfo.SetCorrelationId()` before publishing; propagate to logs.
-10. Health checks (optional): Add checks for pending failures in inbox/outbox tables.
 
 ---
 ## Defining & Handling Events
 ```
-[EventName("Orders.Created")] // optional logical name
-public class OrderCreatedEvent : EventData
-{
-    public Guid OrderId { get; set; }
-    public decimal Total { get; set; }
-}
+[EventName("Orders.Created")]
+public class OrderCreatedEvent : EventData { public Guid OrderId { get; set; } public decimal Total { get; set; } }
 
 public class OrderCreatedHandler : IDistributedEventHandler<OrderCreatedEvent>
 {
-    public Task HandleEventAsync(OrderCreatedEvent evt)
-    {
-        // Idempotent side effects here
-        return Task.CompletedTask;
-    }
+ public Task HandleEventAsync(OrderCreatedEvent evt)
+ { /* side effects */ return Task.CompletedTask; }
 }
 ```
 
 ### Publishing
 ```
-await _distributedEventBus.PublishAsync(new OrderCreatedEvent
-{
-    OrderId = order.Id,
-    Total = order.Total
-}, onUnitOfWorkComplete: false, useOutbox: true);
+await _bus.PublishAsync(new OrderCreatedEvent { OrderId = order.Id, Total = order.Total }, useOutbox: true);
 ```
-Parameters:
-- `onUnitOfWorkComplete` (currently not wired to a UoW callback; placeholder for future integration)
-- `useOutbox` controls whether event is persisted to matching outbox(es) (`OutboxConfig.Selector`) or dispatched immediately.
 
-### Subscribing
+### Manual Subscription
 ```
-_distributedEventBus.Subscribe(new OrderCreatedHandler());
+_bus.Subscribe(new OrderCreatedHandler());
 ```
-Returns `IDisposable` for unsubscription.
+
+Unsubscribe via the returned `IDisposable`.
 
 ---
 ## Azure Service Bus Specifics
-When using `AzureServiceBusDistributedEventBus`:
-- Publish override sends to Service Bus each call (independent of outbox usage) after base logic.
-- Handlers are also invoked by Azure subscription processor messages (in addition to direct dispatch if you also publish without outbox).
-- If an inbox implementation is registered & passed into the bus, incoming messages are first stored as `IncomingEventInfo`.
-- Subscription requires `SubscriptionName` when using topics. For queues omit or adapt.
+- Requires valid `ConnectionString` + `EntityPath` (+ `SubscriptionName` for topics).
+- Messages carry `Subject = typeof(TEvent).FullName` for filtering.
+- If an inbox (`IEventInbox`) is injected into the Azure bus, it will persist incoming messages before handler invocation.
+- Queue mode: set `EntityPath` to queue name and omit `SubscriptionName` (adjust the processor code if needed).
 
-### Duplicate / Idempotency
-Use event IDs / correlation IDs (`SetCorrelationId`) + unique constraints in inbox storage to ensure single processing.
+### Idempotency & Duplicates
+Use Inbox storage; enforce unique `MessageId` or stable event IDs.
 
 ---
 ## Testing
-For isolation, tests can replace the Azure bus with an in‑memory variant:
-```
-Configuration.ReplaceService<IDistributedEventBus, InMemoryDistributedEventBus>(DependencyLifeStyle.Transient);
-```
-Example test (see `DistributedEventBusTests.cs`):
+Manual subscription pattern:
 ```
 var bus = Resolve<IDistributedEventBus>();
 var handled = false;
-bus.Subscribe(new TestEventHandler(() => handled = true));
-await bus.PublishAsync(new TestEvent(), useOutbox: false);
+var sub = bus.Subscribe(new OrderCreatedHandler(() => handled = true));
+await bus.PublishAsync(new OrderCreatedEvent { OrderId = Guid.NewGuid() }, useOutbox: false);
 Assert.True(handled);
 ```
 
@@ -261,45 +240,33 @@ Assert.True(handled);
 ## Extension Points
 | Interface | Purpose |
 |-----------|---------|
-| `IEventOutbox` | Persist outgoing events (implement Add / Retrieve / MarkSent patterns). |
-| `IEventInbox` | Persist incoming broker events for idempotent processing. |
-| `IOutboxSender` | Strategy to read pending outbox rows and publish (polling etc.). |
-| `IInboxProcessor` | Strategy that pulls from inbox storage and dispatches to handlers. |
-| `IDistributedEventBus` | Replace with alternate transports (RabbitMQ, Kafka, etc.). |
-
-Add implementation type to config (`OutboxConfig.ImplementationType`, `InboxConfig.ImplementationType`).
+| `IEventOutbox` | Persist outgoing events. |
+| `IEventInbox` | Persist incoming broker events. |
+| `IOutboxSender` | Poll / send pending outbox events. |
+| `IInboxProcessor` | Poll / process pending inbox events. |
+| `IDistributedEventBus` | Replace transport (RabbitMQ, Kafka, etc.). |
 
 ---
 ## Correlation & Tracing
-Both `OutgoingEventInfo` and `IncomingEventInfo` expose correlation helpers. Attach before persisting.
+`OutgoingEventInfo` / `IncomingEventInfo` expose correlation helpers; attach IDs before persistence.
 
 ---
 ## Roadmap / Ideas
-- Respect `onUnitOfWorkComplete` via ABP unit of work callbacks
-- Retry / exponential backoff policies
-- Batch send & receive operations
-- Native instrumentation (ActivitySource / metrics)
-- Exactly‑once EF implementations
+- Respect `onUnitOfWorkComplete`
+- Retry / exponential backoff
+- Batch operations
+- Instrumentation (ActivitySource)
 - Additional transports (RabbitMQ, Kafka, Event Hubs)
 
 ---
 ## Limitations (Current)
-- Azure bus always publishes directly (even with outbox).
-- No default hosted service wiring included besides sample above.
-
----
-## Sample Minimal Flow (Pseudo EF Outbox Sender)
-```
-foreach (var pending in await _outboxStore.GetUnsentAsync(batchSize))
-{
-    await _azureBus.PublishFromOutboxAsync(pending, outboxConfig);
-    await _outboxStore.MarkSentAsync(pending.Id);
-}
-```
+- Azure bus publishes immediately (even if outbox used)
+- No built-in hosted service registration (sample provided)
+- Manual subscription required (intentional design)
 
 ---
 ## Event Naming
-`EventNameAttribute.GetNameOrDefault(type)` uses attribute name or `FullName`. Use stable logical names to decouple assembly refactors from wire contracts.
+`[EventName]` provides stable logical names; fallback is `FullName`.
 
 ---
 ## Contributing
@@ -310,7 +277,7 @@ foreach (var pending in await _outboxStore.GetUnsentAsync(batchSize))
 
 ---
 ## License
-MIT © 2025 Kori Francis
+MIT ©2025 Kori Francis
 
 ---
 ## References

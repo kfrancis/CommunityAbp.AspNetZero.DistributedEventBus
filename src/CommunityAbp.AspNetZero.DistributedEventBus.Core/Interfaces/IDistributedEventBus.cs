@@ -78,4 +78,9 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     /// </summary>
     IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler, CancellationToken cancellationToken)
         where TEvent : class;
+
+    /// <summary>
+    /// Force initalization of the subscriptions
+    /// </summary>
+    void InitializeSubscriptions();
 }

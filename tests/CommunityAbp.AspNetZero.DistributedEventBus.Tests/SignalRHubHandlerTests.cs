@@ -13,17 +13,16 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 public class SignalRHubHandlerTests : AppTestBase<DistributedEventBusTestModule>
 {
     [Fact]
-    public async Task Hub_Implementing_IDistributedEventHandler_Should_Auto_Subscribe_And_Handle_Event()
+    public async Task Hub_Implementing_IDistributedEventHandler_Should_Handle_Event_After_Manual_Subscribe()
     {
-        // Register dummy hub context before bus resolution so auto-subscribe can construct hub
         LocalIocManager.IocContainer.Register(
             Component.For<IHubContext<BackgroundJobEventHub>>()
                      .ImplementedBy<DummyHubContext>()
                      .LifestyleSingleton()
         );
-
         var bus = Resolve<IDistributedEventBus>();
         var hub = Resolve<BackgroundJobEventHub>();
+        bus.Subscribe<BackgroundJobEventBase>(hub); // manual subscription
         Assert.NotNull(bus);
         Assert.NotNull(hub);
         Assert.Equal(0, hub.CallCount);
@@ -32,7 +31,7 @@ public class SignalRHubHandlerTests : AppTestBase<DistributedEventBusTestModule>
         await bus.PublishAsync(new BackgroundJobEventBase(), useOutbox: false);
 
         Assert.Equal(1, hub.CallCount);
-        Assert.Equal(1, NoOpClientProxy.SendCount); // broadcast attempted via hub context
+        Assert.Equal(1, NoOpClientProxy.SendCount);
     }
 }
 
