@@ -125,7 +125,7 @@ public DbSet<InboxMessage> InboxMessages { get; set; }
 protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
     base.OnModelCreating(modelBuilder);
-    modelBuilder.ConfigureDistributedEventBus("Messaging"); // or omit schema
+    modelBuilder.ConfigureDistributedEventBus("dbo.DistributedEventBus"); // or omit schema
 }
 ```
 4. Generate migrations from your production DbContext (NOT the library context):
@@ -135,7 +135,7 @@ dotnet ef database update -p <YourDataProject> -s <YourStartupProject>
 ```
 5. Optional: Remove/ignore the library's own `DistributedEventBusDbContext` factory & migrations once transitioned (keep only if you still use isolated schema management).
 6. If you previously applied separate migrations, ensure the new combined migration does not duplicate existing tables (adjust with `HasAnnotation("Relational:TableName", ...)` or manual migration edits if needed).
-7. At startup you can ensure creation:
+7. At startup you can ensure creation (optional, already handled in .Migrator project if applicable):
 ```
 using var scope = app.Services.CreateScope();
 var db = scope.ServiceProvider.GetRequiredService<MyAppDbContext>();

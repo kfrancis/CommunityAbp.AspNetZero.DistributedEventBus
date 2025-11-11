@@ -7,12 +7,12 @@ using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
-using Abp.Dependency; // added for ISingletonDependency marker
+using Abp.Dependency; // add marker
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInboxOutbox;
 
-// Mark as singleton so ABP auto-registers it and dependencies are injected
-public class EfCoreEventOutbox : IEventOutbox, ISingletonDependency
+
+public class EfCoreEventOutbox : IEventOutbox, ITransientDependency
 {
     private readonly DistributedEventBusDbContext _dbContext;
 
@@ -97,8 +97,6 @@ public class EfCoreEventOutbox : IEventOutbox, ISingletonDependency
 
     public IReadOnlyList<OutgoingEventInfo> GetEvents()
     {
-        // Return all OutboxMessages as OutgoingEventInfo.
-        // This is a simple implementation; you may want to filter or page in a real scenario.
         return _dbContext.OutboxMessages
             .AsNoTracking()
             .Select(e => new OutgoingEventInfo(e.Id, e.EventName, e.EventData, e.CreatedAt).SetCorrelationId(e.CorrelationId ?? string.Empty))
