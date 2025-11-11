@@ -111,6 +111,40 @@ public class MyAppModule : AbpModule
 ```
 
 ---
+## Using Your Production DbContext For Migrations (Recommended)
+Instead of maintaining a separate migrations history for the inbox/outbox tables, you can include them in your existing application DbContext so they live in the same database and evolve with your app schema.
+
+1. Reference the EF package (`CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore`).
+2. In your production DbContext add the DbSets:
+```
+public DbSet<OutboxMessage> OutboxMessages { get; set; }
+public DbSet<InboxMessage> InboxMessages { get; set; }
+```
+3. Call the extension method in `OnModelCreating` (optionally pass a schema name):
+```
+protected override void OnModelCreating(ModelBuilder modelBuilder)
+{
+    base.OnModelCreating(modelBuilder);
+    modelBuilder.ConfigureDistributedEventBus("Messaging"); // or omit schema
+}
+```
+4. Generate migrations from your production DbContext (NOT the library context):
+```
+dotnet ef migrations add AddInboxOutbox -p <YourDataProject> -s <YourStartupProject>
+dotnet ef database update -p <YourDataProject> -s <YourStartupProject>
+```
+5. Optional: Remove/ignore the library's own `DistributedEventBusDbContext` factory & migrations once transitioned (keep only if you still use isolated schema management).
+6. If you previously applied separate migrations, ensure the new combined migration does not duplicate existing tables (adjust with `HasAnnotation("Relational:TableName", ...)` or manual migration edits if needed).
+7. At startup you can ensure creation:
+```
+using var scope = app.Services.CreateScope();
+var db = scope.ServiceProvider.GetRequiredService<MyAppDbContext>();
+db.Database.Migrate();
+```
+
+This approach ensures a single migration chain, consistent transactional boundaries, and simpler deployment.
+
+---
 ## Production Setup (EF Core, Migrations & Background Processing)
 1. Connection string: Add a named connection string (e.g. `DistributedEventBus`) for SQL Server.
 2. Ensure module registration (`AspNetZeroDistributedEventEntityFrameworkCoreModule`) so `DistributedEventBusDbContext` is added.
@@ -118,7 +152,7 @@ public class MyAppModule : AbpModule
    - `dotnet ef database update -p src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore -s <YourHostProject>`
    If consuming via NuGet and you want schema inside your app DB, either:
    - Reference the EF project directly and run update, or
-   - Copy entities + create migrations in your own DbContext.
+   - Copy entities + create migrations in your own DbContext (preferred; see section above).
 4. Startup initialization: Optionally call `context.Database.Migrate()` early (e.g., in a hosted service) to auto create tables.
 5. Configure outbox & inbox (see Installation) and register implementations (`EfCoreEventOutbox`, `EfCoreEventInbox`).
 6. Start background loops:

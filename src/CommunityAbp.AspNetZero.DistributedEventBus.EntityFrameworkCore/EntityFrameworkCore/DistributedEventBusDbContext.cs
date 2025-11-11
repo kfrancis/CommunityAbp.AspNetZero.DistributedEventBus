@@ -17,6 +17,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Entity
         {
             base.OnModelCreating(modelBuilder);
             modelBuilder.Entity<InboxMessage>().HasIndex(x => x.MessageId).IsUnique();
+            modelBuilder.ConfigureDistributedEventBus();
         }
     }
 }
