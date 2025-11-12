@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Abp.EntityFrameworkCore;
 using Abp.EntityFrameworkCore.Configuration;
 using Abp.Modules;

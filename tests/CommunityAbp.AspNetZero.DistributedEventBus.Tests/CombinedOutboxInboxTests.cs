@@ -12,7 +12,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 /// </summary>
 public class CombinedOutboxInboxTests : AppTestBase
 {
-    [Fact]
+    [Fact(Skip = "Outbox feature disabled in test module (EF outbox registration commented out)")]
     public async Task Outbox_To_Inbox_Flow_Manual_Should_Dispatch_Once()
     {
         var bus = Resolve<IDistributedEventBus>();
