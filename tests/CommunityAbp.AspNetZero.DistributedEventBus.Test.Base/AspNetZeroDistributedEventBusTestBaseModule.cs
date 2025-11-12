@@ -1,12 +1,16 @@
 using Abp.Dependency;
 using Abp.Modules;
 using Abp.TestBase;
+using Castle.MicroKernel.Registration;
 using CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
+using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
+using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInboxOutbox;
 using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base.DependencyInjection;
-using System;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 
@@ -26,48 +30,57 @@ public class AspNetZeroDistributedEventBusTestBaseModule : AbpModule
 
         // Core option singletons
         if (!IocManager.IsRegistered<DistributedEventBusOptions>())
-            IocManager.Register<DistributedEventBusOptions>(DependencyLifeStyle.Singleton);
-        if (!IocManager.IsRegistered<AspNetZeroEventBusBoxesOptions>())
-            IocManager.Register<AspNetZeroEventBusBoxesOptions>(DependencyLifeStyle.Singleton);
+        {
+            IocManager.Register<DistributedEventBusOptions>();
+        }
 
-        // TEMP: Inbox/Outbox (EF) disabled until implementation complete.
-        // if (!IocManager.IsRegistered<IEventOutbox>())
-        // IocManager.Register<IEventOutbox, EfCoreEventOutbox>(DependencyLifeStyle.Transient);
+        if (!IocManager.IsRegistered<AspNetZeroEventBusBoxesOptions>())
+        {
+            IocManager.Register<AspNetZeroEventBusBoxesOptions>();
+        }
 
         if (!IocManager.IsRegistered<IDistributedEventBus>())
-            IocManager.Register<IDistributedEventBus, DistributedEventBusBase>(DependencyLifeStyle.Singleton);
+        {
+            IocManager.Register<IDistributedEventBus, DistributedEventBusBase>();
+        }
 
-        // TEMP: Remove EF Core DbContext setup for inbox/outbox storage.
-        // if (!IocManager.IsRegistered<DbContextOptions<DistributedEventBusDbContext>>())
-        // {
-        // var conn = new SqliteConnection("Data Source=:memory:");
-        // conn.Open();
-        // var builder = new DbContextOptionsBuilder<DistributedEventBusDbContext>().UseSqlite(conn);
-        //
-        // IocManager.IocContainer.Register(
-        // Component.For<DbContextOptions<DistributedEventBusDbContext>>()
-        // .Instance(builder.Options)
-        // .LifestyleSingleton(),
-        // Component.For<DistributedEventBusDbContext>()
-        // .UsingFactoryMethod(k => new DistributedEventBusDbContext(builder.Options))
-        // .LifestyleTransient()
-        // );
-        //
-        // using var ctx = new DistributedEventBusDbContext(builder.Options);
-        // ctx.Database.EnsureCreated();
-        // }
+        // Setup in-memory SQLite database for outbox/inbox testing
+        if (!IocManager.IsRegistered<DbContextOptions<DistributedEventBusDbContext>>())
+        {
+            var conn = new SqliteConnection("Data Source=:memory:");
+            conn.Open();
+            var builder = new DbContextOptionsBuilder<DistributedEventBusDbContext>().UseSqlite(conn);
 
-        // TEMP: Do not configure a default EF outbox while feature incomplete.
-        // var opts = IocManager.Resolve<DistributedEventBusOptions>();
-        // if (opts.Outboxes.Count ==0)
-        // {
-        // opts.Outboxes.Configure("Default", o =>
-        // {
-        // o.ImplementationType = typeof(EfCoreEventOutbox);
-        // o.Selector = _ => true;
-        // o.IsSendingEnabled = true;
-        // });
-        // }
+            IocManager.IocContainer.Register(
+                Component.For<DbContextOptions<DistributedEventBusDbContext>>()
+                    .Instance(builder.Options)
+                    .LifestyleSingleton(),
+                Component.For<DistributedEventBusDbContext>()
+                    .UsingFactoryMethod(k => new DistributedEventBusDbContext(builder.Options))
+                    .LifestyleTransient()
+            );
+
+            using var ctx = new DistributedEventBusDbContext(builder.Options);
+            ctx.Database.EnsureCreated();
+        }
+
+        // Register EF Core outbox implementation
+        if (!IocManager.IsRegistered<IEventOutbox>())
+        {
+            IocManager.Register<IEventOutbox, EfCoreEventOutbox>(DependencyLifeStyle.Transient);
+        }
+
+        // Configure default outbox for tests
+        var opts = IocManager.Resolve<DistributedEventBusOptions>();
+        if (opts.Outboxes.Count == 0)
+        {
+            opts.Outboxes.Configure("Default", o =>
+            {
+                o.ImplementationType = typeof(EfCoreEventOutbox);
+                o.Selector = _ => true;
+                o.IsSendingEnabled = true;
+            });
+        }
     }
 
     public override void Initialize()

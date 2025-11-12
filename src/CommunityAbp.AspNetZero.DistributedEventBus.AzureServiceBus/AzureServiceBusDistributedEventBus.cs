@@ -16,7 +16,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
 #if NETSTANDARD2_0
     public class AzureServiceBusDistributedEventBus : DistributedEventBusBase
 #else
- public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyncDisposable
+    public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyncDisposable
 #endif
     {
         private readonly ServiceBusClient _client;
@@ -38,7 +38,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             _serializer = serializer;
         }
 
-        public override async Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = false)
+        public async override Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = false)
         {
             // Persist to outbox or dispatch directly (base logic)
             await base.PublishAsync(eventData, onUnitOfWorkComplete, useOutbox);
@@ -47,13 +47,16 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             if (useOutbox) return; // defer to outbox sender
 
             var sender = _client.CreateSender(_options.EntityPath);
-            var bytes = _serializer.Serialize(eventData!, typeof(TEvent));
+            var bytes = _serializer.Serialize(eventData, typeof(TEvent));
             var message = new ServiceBusMessage(bytes)
             {
-                Subject = typeof(TEvent).FullName // concrete CLR type FullName
+                Subject = typeof(TEvent).FullName,  // concrete CLR type FullName
+                ApplicationProperties =
+                {
+                    // Add assembly-qualified name for precise resolution across boundaries
+                    ["ClrType"] = typeof(TEvent).AssemblyQualifiedName
+                }
             };
-            // Add assembly-qualified name for precise resolution across boundaries
-            message.ApplicationProperties["ClrType"] = typeof(TEvent).AssemblyQualifiedName;
             await sender.SendMessageAsync(message);
         }
 
@@ -65,57 +68,6 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             }
 
             var processor = _client.CreateProcessor(_options.EntityPath, _options.SubscriptionName);
-
-            async Task ProcessMessage(ProcessMessageEventArgs args)
-            {
-                // Resolve message type:
-                Type? messageType = null;
-                if (args.Message.ApplicationProperties.TryGetValue("ClrType", out var aqnObj) && aqnObj is string aqnStr)
-                {
-                    messageType = Type.GetType(aqnStr, throwOnError: false);
-                }
-                if (messageType == null && !string.IsNullOrWhiteSpace(args.Message.Subject))
-                {
-                    // Fallback: search by FullName
-                    messageType = AppDomain.CurrentDomain.GetAssemblies()
-                    .SelectMany(a =>
-                    {
-                        try { return a.GetTypes(); } catch { return Array.Empty<Type>(); }
-                    })
-                    .FirstOrDefault(t => t.FullName == args.Message.Subject);
-                }
-                if (messageType == null)
-                {
-                    // Unknown type -> abandon (could dead-letter in production)
-                    await args.AbandonMessageAsync(args.Message);
-                    return;
-                }
-
-                // Base-class / interface handler support: ensure handler TEvent is assignable from concrete message type
-                if (!typeof(TEvent).IsAssignableFrom(messageType))
-                {
-                    // Not for this handler
-                    return;
-                }
-
-                // Deserialize using the concrete message type then cast to handler type
-                var obj = _serializer.Deserialize(args.Message.Body.ToArray(), messageType);
-                if (obj is TEvent typed)
-                {
-                    if (_inbox != null)
-                    {
-                        var incoming = new IncomingEventInfo(
-                        Guid.NewGuid(),
-                        args.Message.MessageId,
-                        _serializer.GetTypeIdentifier(messageType),
-                        args.Message.Body.ToArray(),
-                        DateTime.UtcNow);
-                        await _inbox.AddAsync(incoming, CancellationToken.None);
-                    }
-                    await handler.HandleEventAsync(typed);
-                }
-                await args.CompleteMessageAsync(args.Message);
-            }
 
             Task ErrorHandler(ProcessErrorEventArgs _) => Task.CompletedTask;
 
@@ -139,11 +91,62 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             {
                 baseSubscription.Dispose();
                 AsyncHelper.RunSync(async () =>
-     {
-         try { await processor.StopProcessingAsync(); }
-         finally { await processor.DisposeAsync(); }
-     });
+                {
+                    try { await processor.StopProcessingAsync(); }
+                    finally { await processor.DisposeAsync(); }
+                });
             });
+
+            async Task ProcessMessage(ProcessMessageEventArgs args)
+            {
+                // Resolve message type:
+                Type? messageType = null;
+                if (args.Message.ApplicationProperties.TryGetValue("ClrType", out var aqnObj) && aqnObj is string aqnStr)
+                {
+                    messageType = Type.GetType(aqnStr, throwOnError: false);
+                }
+                if (messageType == null && !string.IsNullOrWhiteSpace(args.Message.Subject))
+                {
+                    // Fallback: search by FullName
+                    messageType = AppDomain.CurrentDomain.GetAssemblies()
+                        .SelectMany(a =>
+                        {
+                            try { return a.GetTypes(); } catch { return []; }
+                        })
+                        .FirstOrDefault(t => t.FullName == args.Message.Subject);
+                }
+                if (messageType == null)
+                {
+                    // Unknown type -> abandon (could dead-letter in production)
+                    await args.AbandonMessageAsync(args.Message);
+                    return;
+                }
+
+                // Base-class / interface handler support: ensure handler TEvent is assignable from concrete message type
+                if (!typeof(TEvent).IsAssignableFrom(messageType))
+                {
+                    // Not for this handler
+                    return;
+                }
+
+                // Deserialize using the concrete message type then cast to handler type
+                var obj = _serializer.Deserialize(args.Message.Body.ToArray(), messageType);
+                if (obj is TEvent typed)
+                {
+                    if (_inbox != null)
+                    {
+                        var incoming = new IncomingEventInfo(
+                            Guid.NewGuid(),
+                            args.Message.MessageId,
+                            _serializer.GetTypeIdentifier(messageType),
+                            args.Message.Body.ToArray(),
+                            DateTime.UtcNow);
+                        await _inbox.AddAsync(incoming, CancellationToken.None);
+                    }
+                    await handler.HandleEventAsync(typed);
+                }
+                await args.CompleteMessageAsync(args.Message);
+            }
         }
 
         private sealed class LocalDispose : IDisposable
