@@ -51,15 +51,28 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: 'global.json'
-      - name: Pack libraries
+      - name: Define project list
+        id: projlist
         run: |
           $projects = @(
             'src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj',
             'src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj'
             # 'src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj' # enable when needed
           )
+          echo "projects=$($projects -join ';')" >> $GITHUB_OUTPUT
+      - name: Restore
+        run: |
+          $projects = '${{ steps.projlist.outputs.projects }}'.Split(';')
+          foreach ($p in $projects) { dotnet restore $p }
+      - name: Build (Release)
+        run: |
+          $projects = '${{ steps.projlist.outputs.projects }}'.Split(';')
+          foreach ($p in $projects) { dotnet build $p --configuration Release --no-restore /clp:ErrorsOnly }
+      - name: Pack (no build)
+        run: |
+          $projects = '${{ steps.projlist.outputs.projects }}'.Split(';')
           foreach ($p in $projects) {
-            dotnet pack $p --configuration Release --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=$(git describe --tags)
+            dotnet pack $p --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=$(git describe --tags --abbrev=0)
           }
       - name: Prepare Artifacts
         run: |
@@ -90,8 +103,12 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: 'global.json'
+      - name: Restore tests
+        run: dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj
+      - name: Build tests
+        run: dotnet build tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-restore /clp:ErrorsOnly
       - name: Run tests
-        run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --filter 'FullyQualifiedName!~TestBase'
+        run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-build --filter 'FullyQualifiedName!~TestBase'
 
   deploy:
     if: github.event_name == 'release'
