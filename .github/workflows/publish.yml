@@ -34,12 +34,8 @@ defaults:
 permissions: {}
 
 jobs:
-  build:
+  build_test_pack:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -49,100 +45,46 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
-      - name: Determine version tag
-        id: version
-        run: |
-          $tag = git describe --tags --abbrev=0 2>$null
-          if (-not $tag) { $tag = '0.0.0' }
-          echo "tag=$tag" >> $GITHUB_OUTPUT
-      - name: Restore libraries
+      - name: Restore
         run: |
           dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj
           dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj
-      - name: Build libraries (Release)
+          dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj
+      - name: Build (Release)
         run: |
           dotnet build src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj --configuration Release --no-restore /clp:ErrorsOnly
           dotnet build src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj --configuration Release --no-restore /clp:ErrorsOnly
-      - name: Restore & build tests
-        run: |
-          dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj
           dotnet build tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-restore /clp:ErrorsOnly
-      - name: Run tests
+      - name: Test
         run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-build --filter 'FullyQualifiedName!~TestBase'
-      - name: Upload build outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-src
-          path: |
-            src/CommunityAbp.AspNetZero.DistributedEventBus.Core/bin/Release
-            src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/bin/Release
-
-  pack:
-    needs: build
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - project: src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj
-            artifact: nuget-core
-          - project: src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj
-            artifact: nuget-azureservicebus
-          # Enable EF Core when needed:
-          # - project: src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj
-          #   artifact: nuget-efcore
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          show-progress: false
-      - name: Download build outputs
-        uses: actions/download-artifact@v5
-        with:
-          name: build-src
-          path: src
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: global.json
-      - name: Restore ${{ matrix.project }} (for assets)
-        run: dotnet restore ${{ matrix.project }}
-      - name: Pack ${{ matrix.project }}
+      - name: Pack (no build)
         run: |
           mkdir -p ${{ env.NuGetDirectory }}
-          dotnet pack ${{ matrix.project }} --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=${{ needs.build.outputs.tag }}
-      - name: Upload package artifact
+          dotnet pack src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+          dotnet pack src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+      - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
+          name: nuget
           path: |
             ${{ env.NuGetDirectory }}/*.nupkg
             ${{ env.NuGetDirectory }}/*.snupkg
 
   deploy:
     if: github.event_name == 'release'
-    needs: pack
+    needs: build_test_pack
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     steps:
-      - name: Download Core package
-        uses: actions/download-artifact@v5
+      - uses: actions/download-artifact@v5
         with:
-          name: nuget-core
-          path: ${{ env.NuGetDirectory }}/core
-      - name: Download AzureServiceBus package
-        uses: actions/download-artifact@v5
-        with:
-          name: nuget-azureservicebus
-          path: ${{ env.NuGetDirectory }}/azureservicebus
-      # Uncomment when EF Core package included
-      # - name: Download EF Core package
-      #   uses: actions/download-artifact@v5
-      #   with:
-      #     name: nuget-efcore
-      #     path: ${{ env.NuGetDirectory }}/efcore
+          name: nuget
+          path: ${{ env.NuGetDirectory }}
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
       - name: NuGet login (OIDC → temp API key)
         uses: NuGet/login@v1
         id: login
