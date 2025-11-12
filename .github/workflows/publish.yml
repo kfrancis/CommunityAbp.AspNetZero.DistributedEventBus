@@ -77,14 +77,19 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v5  # checkout FIRST so artifact download isn't wiped
+        with:
+          fetch-depth: 0
+          show-progress: false
       - uses: actions/download-artifact@v5
         with:
           name: nuget
           path: ${{ env.NuGetDirectory }}
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          show-progress: false
+      - name: List downloaded packages
+        run: |
+          if (Test-Path '${{ env.NuGetDirectory }}') {
+            Get-ChildItem '${{ env.NuGetDirectory }}' -Recurse | Write-Host
+          } else { Write-Error 'NuGetDirectory missing after download.' }
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -96,6 +101,9 @@ jobs:
           user: ${{ secrets.NUGET_USER }}
       - name: Publish NuGet packages
         run: |
-          foreach($file in (Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg)) {
+          if (-not (Test-Path '${{ env.NuGetDirectory }}')) { throw 'NuGet directory not found.' }
+          $pkgs = Get-ChildItem "${{ env.NuGetDirectory }}" -Recurse -Include *.nupkg
+          if (-not $pkgs) { throw 'No .nupkg files found to publish.' }
+          foreach($file in $pkgs) {
             dotnet nuget push $file --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
           }
