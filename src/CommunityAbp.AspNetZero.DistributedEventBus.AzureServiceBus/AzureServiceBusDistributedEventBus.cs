@@ -38,7 +38,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
             _serializer = serializer;
         }
 
-        public override async Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = true)
+        public override async Task PublishAsync<TEvent>(TEvent eventData, bool onUnitOfWorkComplete = true, bool useOutbox = false)
         {
             // Persist to outbox or dispatch directly (base logic)
             await base.PublishAsync(eventData, onUnitOfWorkComplete, useOutbox);

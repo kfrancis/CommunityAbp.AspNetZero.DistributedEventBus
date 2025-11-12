@@ -8,6 +8,30 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
 {
     [Fact]
+    public async Task Outbox_DefaultPublish_DoesNotStoreEvent()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        var options = Resolve<DistributedEventBusOptions>();
+
+        options.Outboxes.Configure("test", cfg =>
+        {
+            cfg.ImplementationType = typeof(InMemoryOutbox);
+            cfg.Selector = t => t == typeof(OutboxTestEvent);
+            cfg.IsSendingEnabled = false; // manual publish
+        });
+
+        LocalIocManager.IocContainer.Register(
+            Castle.MicroKernel.Registration.Component
+                .For<InMemoryOutbox, IEventOutbox>()
+                .LifestyleSingleton()
+        );
+
+        await bus.PublishAsync(new OutboxTestEvent { Value = "X" }); // default should not use outbox
+        var outbox = Resolve<InMemoryOutbox>();
+        Assert.Empty(outbox.Events);
+    }
+
+    [Fact]
     public async Task Outbox_Publish_StoresEvent_Then_PublishFromOutbox_Dispatches()
     {
         var bus = Resolve<IDistributedEventBus>();

@@ -24,7 +24,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     Task PublishAsync<TEvent>(
         TEvent eventData,
         bool onUnitOfWorkComplete = true,
-        bool useOutbox = true)
+        bool useOutbox = false)
         where TEvent : class;
 
     /// <summary>
@@ -42,7 +42,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
         Type eventType,
         object eventData,
         bool onUnitOfWorkComplete = true,
-        bool useOutbox = true);
+        bool useOutbox = false);
 
     /// <summary>
     /// Publish with cancellation token support.
@@ -51,7 +51,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
         TEvent eventData,
         CancellationToken cancellationToken,
         bool onUnitOfWorkComplete = true,
-        bool useOutbox = true)
+        bool useOutbox = false)
         where TEvent : class;
 
     /// <summary>
@@ -62,7 +62,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
         object eventData,
         CancellationToken cancellationToken,
         bool onUnitOfWorkComplete = true,
-        bool useOutbox = true);
+        bool useOutbox = false);
 
     /// <summary>
     ///     Subscribes to an event.

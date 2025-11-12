@@ -8,6 +8,14 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 public class OutboxInboxTests : DistributedEventBusTests
 {
     [Fact]
+    public async Task Publish_Default_ShouldNotPersistMessage()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        await bus.PublishAsync(new TestEvent());
+        UsingDbContext(ctx => Assert.False(ctx.OutboxMessages.Any(), "Outbox should be empty when not requesting useOutbox."));
+    }
+
+    [Fact]
     public async Task Publish_WithOutbox_ShouldPersistMessage()
     {
         var bus = Resolve<IDistributedEventBus>();

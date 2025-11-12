@@ -35,7 +35,21 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     {
         var bus = Resolve<IDistributedEventBus>();
         bus.Subscribe(new TestEventHandler(() => { }));
+        // Explicit false still supported
         await bus.PublishAsync(new TestEvent(), useOutbox: false);
+    }
+
+    [Fact]
+    public async Task PublishAsync_Default_ShouldPublishDirectly()
+    {
+        var bus = Resolve<IDistributedEventBus>();
+        var handled = false;
+        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+        // No explicit useOutbox parameter -> should default to false
+        await bus.PublishAsync(new TestEvent());
+        Assert.True(handled);
+        // Ensure nothing persisted to outbox by default
+        UsingDbContext(ctx => Assert.False(ctx.OutboxMessages.Any(), "Outbox should be empty when useOutbox defaults to false."));
     }
 
     [Fact]
@@ -44,7 +58,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
         bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
-        await bus.PublishAsync(new TestEvent(), useOutbox: false);
+        await bus.PublishAsync(new TestEvent());
         Assert.True(handled);
     }
 
@@ -56,7 +70,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
         var handler = new TestEventHandler(() => handled = true);
         var subscription = bus.Subscribe<TestEvent>(handler);
         subscription.Dispose();
-        await bus.PublishAsync(new TestEvent(), useOutbox: false);
+        await bus.PublishAsync(new TestEvent());
         Assert.False(handled);
     }
 
@@ -64,7 +78,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     public async Task PublishAsync_ShouldThrowArgumentNullException_WhenEventIsNull()
     {
         var bus = Resolve<IDistributedEventBus>();
-        await Assert.ThrowsAsync<ArgumentNullException>(() => bus.PublishAsync<TestEvent>(null, useOutbox: false));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => bus.PublishAsync<TestEvent>(null));
     }
 
     [EventName(nameof(TestEvent))]
