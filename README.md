@@ -7,6 +7,17 @@ Targets:
 - .NET8 (modern runtime)
 
 ---
+## IMPORTANT STATUS WARNING
+> The EntityFrameworkCore persistence module (`CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore`) is currently INCOMPLETE / NOT PRODUCTION READY. Outbox sending & Inbox processing reliability paths are not finalized. Using `useOutbox: true` will not provide guaranteed store-and-forward semantics. Do NOT rely on the EF module for production durability yet.
+>
+> Until completed:
+> - Treat Outbox/Inboxes as experimental.
+> - Prefer direct publish (useOutbox=false) for critical flows.
+> - Expect schema/behavior changes.
+>
+> A compile-time warning is emitted when referencing the EF module.
+
+---
 ## Key Features
 - Distributed event bus abstraction (`IDistributedEventBus`)
 - Optional Azure Service Bus transport (`AzureServiceBusDistributedEventBus`)
@@ -97,7 +108,7 @@ public class MvcModule : AbpModule
 ## Packages (Current Layout)
 - `CommunityAbp.AspNetZero.DistributedEventBus.Core`
 - `CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus`
-- `CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore` (DB context + tables)
+- `CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore` (INCOMPLETE – experimental persistence)
 - Test infrastructure in `tests/*`
 
 ---
@@ -107,7 +118,7 @@ Add packages:
 dotnet add package CommunityAbp.AspNetZero.DistributedEventBus.Core
 # Optional
 dotnet add package CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
-# Persistence (if using provided EF implementation)
+# Persistence (EF module currently incomplete / experimental)
 dotnet add package CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore
 ```
 
@@ -116,7 +127,7 @@ Register ABP modules (consumer example):
 [DependsOn(
  typeof(AspNetZeroDistributedEventBusModule),
  typeof(AzureDistributedEventServiceBusModule), // Azure transport
- typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule) // EF persistence (optional)
+ typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule) // EF persistence (optional / experimental)
 )]
 public class ConsumerModule : AbpModule
 {
@@ -127,7 +138,7 @@ public class ConsumerModule : AbpModule
  {
  i.ImplementationType = typeof(EfCoreEventInbox);
  i.EventSelector = _ => true;
- i.IsProcessingEnabled = true;
+ i.IsProcessingEnabled = true; // experimental
  });
  }
  public override void OnApplicationInitialization(AbpApplicationInitializationContext ctx)
@@ -150,7 +161,7 @@ public class ConsumerModule : AbpModule
 
 ---
 ## Using Your Production DbContext For Migrations (Recommended)
-(Same as previous version; unchanged.)
+(Same as previous version; unchanged. EF inbox/outbox tables still subject to change.)
 1. Reference the EF package.
 2. Add DbSets to your DbContext:
 ```
@@ -205,7 +216,7 @@ public class OrderCreatedHandler : IDistributedEventHandler<OrderCreatedEvent>
 
 ### Publishing
 ```
-await _bus.PublishAsync(new OrderCreatedEvent { OrderId = order.Id, Total = order.Total }, useOutbox: true);
+await _bus.PublishAsync(new OrderCreatedEvent { OrderId = order.Id, Total = order.Total }, useOutbox: true); // experimental reliability path
 ```
 
 ### Manual Subscription
@@ -219,11 +230,11 @@ Unsubscribe via the returned `IDisposable`.
 ## Azure Service Bus Specifics
 - Requires valid `ConnectionString` + `EntityPath` (+ `SubscriptionName` for topics).
 - Messages carry `Subject = typeof(TEvent).FullName` for filtering.
-- If an inbox (`IEventInbox`) is injected into the Azure bus, it will persist incoming messages before handler invocation.
+- If an inbox (`IEventInbox`) is injected into the Azure bus, it will persist incoming messages before handler invocation (experimental when using EF module).
 - Queue mode: set `EntityPath` to queue name and omit `SubscriptionName` (adjust the processor code if needed).
 
 ### Idempotency & Duplicates
-Use Inbox storage; enforce unique `MessageId` or stable event IDs.
+Use Inbox storage (experimental); enforce unique `MessageId` or stable event IDs.
 
 ---
 ## Testing
@@ -252,6 +263,7 @@ Assert.True(handled);
 
 ---
 ## Roadmap / Ideas
+- Complete EF persistence reliability path
 - Respect `onUnitOfWorkComplete`
 - Retry / exponential backoff
 - Batch operations
@@ -260,6 +272,7 @@ Assert.True(handled);
 
 ---
 ## Limitations (Current)
+- EF persistence incomplete
 - Azure bus publishes immediately (even if outbox used)
 - No built-in hosted service registration (sample provided)
 - Manual subscription required (intentional design)
