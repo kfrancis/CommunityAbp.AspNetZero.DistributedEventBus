@@ -38,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -47,6 +49,12 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Determine version tag
+        id: version
+        run: |
+          $tag = git describe --tags --abbrev=0 2>$null
+          if (-not $tag) { $tag = '0.0.0' }
+          echo "tag=$tag" >> $GITHUB_OUTPUT
       - name: Restore libraries
         run: |
           dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj
@@ -96,10 +104,12 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Restore ${{ matrix.project }} (for assets)
+        run: dotnet restore ${{ matrix.project }}
       - name: Pack ${{ matrix.project }}
         run: |
           mkdir -p ${{ env.NuGetDirectory }}
-          dotnet pack ${{ matrix.project }} --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=$(git describe --tags --abbrev=0)
+          dotnet pack ${{ matrix.project }} --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=${{ needs.build.outputs.tag }}
       - name: Upload package artifact
         uses: actions/upload-artifact@v4
         with:
