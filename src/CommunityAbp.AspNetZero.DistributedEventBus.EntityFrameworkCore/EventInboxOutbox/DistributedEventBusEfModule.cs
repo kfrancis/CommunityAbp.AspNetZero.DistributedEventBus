@@ -10,7 +10,7 @@ using Castle.MicroKernel.Registration; // fallback
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInboxOutbox;
 
-[DependsOn(typeof(AspNetZeroDistributedEventBusModule), typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule))]
+[DependsOn(typeof(AspNetZeroDistributedEventBusModule) /*,typeof(AspNetZeroDistributedEventEntityFrameworkCoreModule)*/)]
 public class DistributedEventBusEfModule : AbpModule
 {
     public override void PreInitialize()
