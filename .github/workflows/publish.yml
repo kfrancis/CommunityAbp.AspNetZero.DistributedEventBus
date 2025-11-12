@@ -2,18 +2,16 @@
 
 name: publish
 on:
-  workflow_dispatch: # Allow running the workflow manually from the GitHub UI
+  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
     paths:
       - 'src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj'
       - 'src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj'
       - 'src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj'
       - '.github/workflows/publish.yml'
   pull_request:
-    branches:
-      - '*'
+    branches: [ '*' ]
     paths:
       - 'src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj'
       - 'src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj'
@@ -27,7 +25,7 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
   DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 1
   DOTNET_NOLOGO: true
-  NuGetDirectory: ${{ github.workspace}}/nuget
+  NuGetDirectory: ${{ github.workspace }}/nuget
 
 defaults:
   run:
@@ -36,12 +34,10 @@ defaults:
 permissions: {}
 
 jobs:
-  create_nuget:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      attestations: write
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -50,80 +46,93 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          global-json-file: 'global.json'
-      - name: Define project list
-        id: projlist
+          global-json-file: global.json
+      - name: Restore libraries
         run: |
-          $projects = @(
-            'src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj',
-            'src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj'
-            # 'src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj' # enable when needed
-          )
-          echo "projects=$($projects -join ';')" >> $GITHUB_OUTPUT
-      - name: Restore
+          dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj
+          dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj
+      - name: Build libraries (Release)
         run: |
-          $projects = '${{ steps.projlist.outputs.projects }}'.Split(';')
-          foreach ($p in $projects) { dotnet restore $p }
-      - name: Build (Release)
+          dotnet build src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj --configuration Release --no-restore /clp:ErrorsOnly
+          dotnet build src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj --configuration Release --no-restore /clp:ErrorsOnly
+      - name: Restore & build tests
         run: |
-          $projects = '${{ steps.projlist.outputs.projects }}'.Split(';')
-          foreach ($p in $projects) { dotnet build $p --configuration Release --no-restore /clp:ErrorsOnly }
-      - name: Pack (no build)
-        run: |
-          $projects = '${{ steps.projlist.outputs.projects }}'.Split(';')
-          foreach ($p in $projects) {
-            dotnet pack $p --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=$(git describe --tags --abbrev=0)
-          }
-      - name: Prepare Artifacts
-        run: |
-          mkdir -p ${{ env.NuGetDirectory }}/artifacts
-          cp ${{ env.NuGetDirectory }}/*.nupkg ${{ env.NuGetDirectory }}/artifacts
-          cp ${{ env.NuGetDirectory }}/*.snupkg ${{ env.NuGetDirectory }}/artifacts
-      - uses: actions/upload-artifact@v4
-        with:
-          name: nuget
-          if-no-files-found: error
-          retention-days: 7
-          path: |
-            ${{ env.NuGetDirectory }}/artifacts/*.nupkg
-            ${{ env.NuGetDirectory }}/artifacts/*.snupkg
-
-  run_tests:
-    runs-on: ubuntu-latest
-    permissions:
-      attestations: write
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-          show-progress: false
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          global-json-file: 'global.json'
-      - name: Restore tests
-        run: dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj
-      - name: Build tests
-        run: dotnet build tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-restore /clp:ErrorsOnly
+          dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj
+          dotnet build tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-restore /clp:ErrorsOnly
       - name: Run tests
         run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-build --filter 'FullyQualifiedName!~TestBase'
+      - name: Upload build outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-src
+          path: |
+            src/CommunityAbp.AspNetZero.DistributedEventBus.Core/bin/Release
+            src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/bin/Release
+
+  pack:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - project: src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj
+            artifact: nuget-core
+          - project: src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj
+            artifact: nuget-azureservicebus
+          # Enable EF Core when needed:
+          # - project: src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj
+          #   artifact: nuget-efcore
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          show-progress: false
+      - name: Download build outputs
+        uses: actions/download-artifact@v5
+        with:
+          name: build-src
+          path: src
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Pack ${{ matrix.project }}
+        run: |
+          mkdir -p ${{ env.NuGetDirectory }}
+          dotnet pack ${{ matrix.project }} --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg -p:ContinuousIntegrationBuild=true -p:MinVerTag=$(git describe --tags --abbrev=0)
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ env.NuGetDirectory }}/*.nupkg
+            ${{ env.NuGetDirectory }}/*.snupkg
 
   deploy:
     if: github.event_name == 'release'
+    needs: pack
     runs-on: ubuntu-latest
-    needs: [ run_tests ]
     permissions:
-      id-token: write  # enable GitHub OIDC token issuance for this job
+      id-token: write
     steps:
-      - uses: actions/download-artifact@v5
+      - name: Download Core package
+        uses: actions/download-artifact@v5
         with:
-          name: nuget
-          path: ${{ env.NuGetDirectory }}
+          name: nuget-core
+          path: ${{ env.NuGetDirectory }}/core
+      - name: Download AzureServiceBus package
+        uses: actions/download-artifact@v5
+        with:
+          name: nuget-azureservicebus
+          path: ${{ env.NuGetDirectory }}/azureservicebus
+      # Uncomment when EF Core package included
+      # - name: Download EF Core package
+      #   uses: actions/download-artifact@v5
+      #   with:
+      #     name: nuget-efcore
+      #     path: ${{ env.NuGetDirectory }}/efcore
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
-      # Get a short-lived NuGet API key
       - name: NuGet login (OIDC → temp API key)
         uses: NuGet/login@v1
         id: login
