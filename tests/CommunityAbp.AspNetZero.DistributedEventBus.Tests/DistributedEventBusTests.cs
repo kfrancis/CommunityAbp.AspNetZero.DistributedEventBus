@@ -1,4 +1,4 @@
-using Abp.Events.Bus; // Needed for EventData base class
+using Abp.Events.Bus;
 using CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
@@ -7,20 +7,29 @@ using NSubstitute;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
+/// <summary>
+///     Contains unit tests for verifying the behavior of the distributed event bus implementation using an in-memory test
+///     environment.
+/// </summary>
+/// <remarks>
+///     This test class ensures that the distributed event bus resolves correctly, publishes events as
+///     expected, and handles subscription and unsubscription scenarios. It uses a stubbed Azure Service Bus configuration,
+///     but the actual event bus implementation under test is replaced with an in-memory version for isolation and
+///     repeatability. The tests cover direct publishing, handler invocation, and argument validation.
+/// </remarks>
 public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModule>
 {
-    private readonly IAzureServiceBusOptions _configuration;
-
     public DistributedEventBusTests()
     {
-        _configuration = Substitute.For<IAzureServiceBusOptions>();
+        var configuration = Substitute.For<IAzureServiceBusOptions>();
 
         // Stub configuration (not actually used by in-memory bus replacement in tests)
-        _configuration.ConnectionString.Returns("Endpoint=sb://your-service-bus-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-access-key");
-        _configuration.EntityPath.Returns("your-queue-or-topic-name");
-        _configuration.SubscriptionName.Returns("your-subscription-name");
+        configuration.ConnectionString.Returns(
+            "Endpoint=sb://your-service-bus-namespace.servicebus.windows.net/;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=your-access-key");
+        configuration.EntityPath.Returns("your-queue-or-topic-name");
+        configuration.SubscriptionName.Returns("your-subscription-name");
 
-        ReplaceService(_configuration);
+        ReplaceService(configuration);
     }
 
     [Fact]
@@ -43,7 +52,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     {
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
-        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+        bus.Subscribe(new TestEventHandler(() => handled = true));
         await bus.PublishAsync(new TestEvent(), useOutbox: false);
         Assert.True(handled);
     }
@@ -54,7 +63,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
         var handler = new TestEventHandler(() => handled = true);
-        var subscription = bus.Subscribe<TestEvent>(handler);
+        var subscription = bus.Subscribe(handler);
         subscription.Dispose();
         await bus.PublishAsync(new TestEvent(), useOutbox: false);
         Assert.False(handled);
@@ -64,7 +73,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     public async Task PublishAsync_ShouldThrowArgumentNullException_WhenEventIsNull()
     {
         var bus = Resolve<IDistributedEventBus>();
-        await Assert.ThrowsAsync<ArgumentNullException>(() => bus.PublishAsync<TestEvent>(null, useOutbox: false));
+        await Assert.ThrowsAsync<ArgumentNullException>(() => bus.PublishAsync<TestEvent>(null!, useOutbox: false));
     }
 
     [EventName(nameof(TestEvent))]
@@ -74,6 +83,7 @@ public class DistributedEventBusTests : AppTestBase<DistributedEventBusTestModul
     {
         private readonly Action _onHandle;
         public TestEventHandler(Action onHandle) => _onHandle = onHandle;
+
         public Task HandleEventAsync(TestEvent eventData)
         {
             _onHandle();

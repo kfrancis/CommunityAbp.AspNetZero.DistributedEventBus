@@ -2,7 +2,49 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+
+    <!-- Package Information -->
+    <PackageId>CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore</PackageId>
+    <PackageVersion>1.0.0</PackageVersion>
+    <Authors>Clinical Support Systems</Authors>
+    <Description>Entity framework implementation for CommunityAbp.AspNetZero.DistributedEventBus - A distributed event bus implementation for AspNetZero.</Description>
+    <PackageProjectUrl>https://github.com/kfrancis/CommunityAbp.AspNetZero.DistributedEventBus</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/kfrancis/CommunityAbp.AspNetZero.DistributedEventBus</RepositoryUrl>
+    <PackageTags>distributed;eventbus;aspnetzero;entityframework</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IsPackable>true</IsPackable>
+
+    <!-- Build Configuration -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>
+
+    <!-- MinVer Configuration -->
+    <MinVerTagPrefix>v</MinVerTagPrefix>
+    <MinVerSkip>false</MinVerSkip>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Enable NuGet package auditing -->
+    <NuGetAudit>true</NuGetAudit>
+
+    <!-- Audit direct and transitive packages -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+
+    <!-- Report low, moderate, high and critical advisories -->
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+
+    <!-- Fails the build on CI or on release when a vulnerability is detected -->
+    <WarningsAsErrors Condition="$(ContinuousIntegrationBuild) == 'true' OR '$(Configuration)' == 'Release'">
+      (WarningsAsErrors);NU1900;NU1901;NU1902;NU1903;NU1904
+    </WarningsAsErrors>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -10,15 +52,30 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Abp.EntityFrameworkCore" Version="9.3.0" />
+    <PackageReference Include="Abp.EntityFrameworkCore" Version="9.4.*" />
+    <PackageReference Include="DotNet.ReproducibleBuilds" Version="1.2.39">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.13" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.*" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="MinVer" Version="6.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(Configuration)' == 'Debug'">
+    <PackageReference Include="Roslynator.Analyzers" Version="4.14.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -26,6 +83,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\CommunityAbp.AspNetZero.DistributedEventBus.Core\CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 </Project>

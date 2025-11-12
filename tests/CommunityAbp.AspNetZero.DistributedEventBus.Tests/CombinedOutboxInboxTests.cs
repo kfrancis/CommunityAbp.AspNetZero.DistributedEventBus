@@ -1,4 +1,5 @@
 using Abp.Events.Bus;
+using Castle.MicroKernel.Registration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
@@ -7,8 +8,8 @@ using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInbox
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
 /// <summary>
-/// Verifies a full manual pipeline: event persisted to outbox, copied to inbox, then processed from inbox.
-/// Uses ISupportsEventBoxes APIs directly (no polling workers) to exercise both sides in combination.
+///     Verifies a full manual pipeline: event persisted to outbox, copied to inbox, then processed from inbox.
+///     Uses ISupportsEventBoxes APIs directly (no polling workers) to exercise both sides in combination.
 /// </summary>
 public class CombinedOutboxInboxTests : AppTestBase
 {
@@ -31,7 +32,7 @@ public class CombinedOutboxInboxTests : AppTestBase
         if (!LocalIocManager.IsRegistered<IEventInbox>())
         {
             LocalIocManager.IocContainer.Register(
-                Castle.MicroKernel.Registration.Component
+                Component
                     .For<IEventInbox, EfCoreEventInbox>()
                     .LifestyleTransient());
         }
@@ -70,12 +71,16 @@ public class CombinedOutboxInboxTests : AppTestBase
         UsingDbContext(ctx => Assert.True(ctx.InboxMessages.Any(m => m.Id == incoming.Id && m.Status == "Processed")));
     }
 
-    private class CombinedTestEvent : EventData { public string Value { get; set; } = string.Empty; }
+    private class CombinedTestEvent : EventData
+    {
+        public string Value { get; set; } = string.Empty;
+    }
 
     private class CombinedTestEventHandler : IDistributedEventHandler<CombinedTestEvent>
     {
         private readonly Action _onHandle;
         public CombinedTestEventHandler(Action onHandle) => _onHandle = onHandle;
+
         public Task HandleEventAsync(CombinedTestEvent eventData)
         {
             _onHandle();

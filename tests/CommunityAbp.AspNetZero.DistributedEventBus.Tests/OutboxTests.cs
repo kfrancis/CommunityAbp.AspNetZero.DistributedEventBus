@@ -1,7 +1,9 @@
+using Castle.MicroKernel.Registration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
+using JetBrains.Annotations;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
@@ -23,7 +25,7 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
 
         // Ensure IoC registration for outbox
         LocalIocManager.IocContainer.Register(
-            Castle.MicroKernel.Registration.Component
+            Component
                 .For<InMemoryOutbox, IEventOutbox>()
                 .LifestyleSingleton()
         );
@@ -38,20 +40,21 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
         Assert.Equal(0, handled);
 
         var cfg = options.Outboxes["test"];
-        await ((ISupportsEventBoxes)bus).PublishFromOutboxAsync(outbox.Events.First(), cfg);
+        await ((ISupportsEventBoxes)bus).PublishFromOutboxAsync(outbox.Events[0], cfg);
 
         Assert.Equal(1, handled);
     }
 
     private class OutboxTestEvent
     {
-        public string Value { get; set; }
+        public string? Value { get; set; }
     }
 
     private class OutboxTestHandler : IDistributedEventHandler<OutboxTestEvent>
     {
         private readonly Action _onHandle;
         public OutboxTestHandler(Action onHandle) => _onHandle = onHandle;
+
         public Task HandleEventAsync(OutboxTestEvent eventData)
         {
             _onHandle();
@@ -62,19 +65,9 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
     // Simple in-memory outbox
     private class InMemoryOutbox : IEventOutbox
     {
-        private class State
-        {
-            public OutgoingEventInfo Event { get; }
-            public string Status { get; set; } = "Pending";
-            public int RetryCount { get; set; }
-            public string? Error { get; set; }
-            public DateTime? SentAt { get; set; }
-
-            public State(OutgoingEventInfo evt) => Event = evt;
-        }
-
-        private readonly List<State> _states = new();
         private readonly object _lock = new();
+
+        private readonly List<State> _states = [];
 
         // For the test we expose the raw events
         public IReadOnlyList<OutgoingEventInfo> Events
@@ -94,6 +87,7 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
             {
                 _states.Add(new State(outgoingEvent));
             }
+
             return Task.CompletedTask;
         }
 
@@ -116,7 +110,7 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
                     .Select(s => s.Event)
                     .ToList()
                     .AsEnumerable();
-                return Task.FromResult<IEnumerable<OutgoingEventInfo>>(pending);
+                return Task.FromResult(pending);
             }
         }
 
@@ -134,8 +128,10 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
                         state.Error = v;
                     }
                 }
+
                 return Task.CompletedTask;
             }
+
             throw new ArgumentException("id must be Guid", nameof(id));
         }
 
@@ -153,9 +149,21 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
                         state.Error = null;
                     }
                 }
+
                 return Task.CompletedTask;
             }
+
             throw new ArgumentException("id must be Guid", nameof(id));
+        }
+
+        private class State
+        {
+            public State(OutgoingEventInfo evt) => Event = evt;
+            public OutgoingEventInfo Event { get; }
+            public string Status { get; set; } = "Pending";
+            public int RetryCount { get; set; }
+            public string? Error { [UsedImplicitly] get; set; }
+            public DateTime? SentAt { [UsedImplicitly] get; set; }
         }
     }
 }

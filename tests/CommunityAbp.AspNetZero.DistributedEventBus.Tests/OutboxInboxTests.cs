@@ -1,8 +1,9 @@
-using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
-using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using Abp.Events.Bus;
-using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
+
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
 public class OutboxInboxTests : DistributedEventBusTests
@@ -24,7 +25,7 @@ public class OutboxInboxTests : DistributedEventBusTests
     {
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
-        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+        bus.Subscribe(new TestEventHandler(() => handled = true));
 
         await bus.PublishAsync(new TestEvent(), useOutbox: true);
         // Allow any immediate synchronous handlers to run
@@ -38,7 +39,7 @@ public class OutboxInboxTests : DistributedEventBusTests
     {
         var bus = Resolve<IDistributedEventBus>();
         var handled = false;
-        bus.Subscribe<TestEvent>(new TestEventHandler(() => handled = true));
+        bus.Subscribe(new TestEventHandler(() => handled = true));
 
         await bus.PublishAsync(new TestEvent(), useOutbox: true);
 
@@ -64,12 +65,15 @@ public class OutboxInboxTests : DistributedEventBusTests
     }
 
     [EventName(nameof(TestEvent))]
-    private class TestEvent : EventData { }
+    private class TestEvent : EventData
+    {
+    }
 
     private class TestEventHandler : IDistributedEventHandler<TestEvent>
     {
-        private readonly System.Action _onHandle;
-        public TestEventHandler(System.Action onHandle) => _onHandle = onHandle;
+        private readonly Action _onHandle;
+        public TestEventHandler(Action onHandle) => _onHandle = onHandle;
+
         public Task HandleEventAsync(TestEvent eventData)
         {
             _onHandle();

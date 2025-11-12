@@ -1,9 +1,12 @@
 using Abp.Events.Bus;
+using Castle.MicroKernel.Registration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EventInboxOutbox;
-using CommunityAbp.AspNetZero.DistributedEventBus.Core.Managers; // for IInboxProcessor
+
+// for IInboxProcessor
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 
@@ -28,7 +31,7 @@ public class InboxTests : AppTestBase // use non-generic wrapper defined in proj
         if (!LocalIocManager.IsRegistered<IEventInbox>())
         {
             LocalIocManager.IocContainer.Register(
-                Castle.MicroKernel.Registration.Component
+                Component
                     .For<IEventInbox, EfCoreEventInbox>()
                     .LifestyleTransient());
         }
@@ -49,9 +52,9 @@ public class InboxTests : AppTestBase // use non-generic wrapper defined in proj
 
         // Simulate broker delivery by persisting to inbox
         var incoming = new IncomingEventInfo(
-            Guid.NewGuid(),                 // new inbox event id
-            Guid.NewGuid().ToString(),      // synthetic MessageId from broker
-            outboxRow.EventName,            // use stored type identifier
+            Guid.NewGuid(), // new inbox event id
+            Guid.NewGuid().ToString(), // synthetic MessageId from broker
+            outboxRow.EventName, // use stored type identifier
             outboxRow.EventData,
             DateTime.UtcNow);
         var inbox = Resolve<IEventInbox>();
@@ -79,12 +82,16 @@ public class InboxTests : AppTestBase // use non-generic wrapper defined in proj
         await processor.StopAsync();
     }
 
-    private class TestInboxEvent : EventData { public string Value { get; set; } = string.Empty; }
+    private class TestInboxEvent : EventData
+    {
+        public string Value { get; set; } = string.Empty;
+    }
 
     private class TestInboxEventHandler : IDistributedEventHandler<TestInboxEvent>
     {
         private readonly Action _onHandle;
         public TestInboxEventHandler(Action onHandle) => _onHandle = onHandle;
+
         public Task HandleEventAsync(TestInboxEvent eventData)
         {
             _onHandle();

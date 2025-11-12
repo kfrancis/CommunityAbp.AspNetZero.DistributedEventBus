@@ -6,7 +6,6 @@ using Abp.Modules;
 using Abp.TestBase;
 using Castle.MicroKernel.Registration;
 using CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
 {
@@ -54,7 +53,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
             return UsingDbContext(AbpSession.TenantId, func);
         }
 
-        protected void UsingDbContext(int? tenantId, Action<DistributedEventBusDbContext> action)
+        private void UsingDbContext(int? tenantId, Action<DistributedEventBusDbContext> action)
         {
             using (UsingTenantId(tenantId))
             {
@@ -66,7 +65,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
             }
         }
 
-        protected TResult UsingDbContext<TResult>(int? tenantId, Func<DistributedEventBusDbContext, TResult> func)
+        private TResult UsingDbContext<TResult>(int? tenantId, Func<DistributedEventBusDbContext, TResult> func)
         {
             TResult result;
 
@@ -92,11 +91,11 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
             return UsingDbContextAsync(AbpSession.TenantId, func);
         }
 
-        protected async Task UsingDbContextAsync(int? tenantId, Func<DistributedEventBusDbContext, Task> action)
+        private async Task UsingDbContextAsync(int? tenantId, Func<DistributedEventBusDbContext, Task> action)
         {
             using (UsingTenantId(tenantId))
             {
-                using (var context = LocalIocManager.Resolve<DistributedEventBusDbContext>())
+                await using (var context = LocalIocManager.Resolve<DistributedEventBusDbContext>())
                 {
                     await action(context);
                     await context.SaveChangesAsync();
@@ -104,14 +103,14 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
             }
         }
 
-        protected async Task<TResult> UsingDbContextAsync<TResult>(int? tenantId,
+        private async Task<TResult> UsingDbContextAsync<TResult>(int? tenantId,
             Func<DistributedEventBusDbContext, Task<TResult>> func)
         {
             TResult result;
 
             using (UsingTenantId(tenantId))
             {
-                using (var context = LocalIocManager.Resolve<DistributedEventBusDbContext>())
+                await using (var context = LocalIocManager.Resolve<DistributedEventBusDbContext>())
                 {
                     result = await func(context);
                     await context.SaveChangesAsync();
@@ -121,7 +120,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Test.Base
             return result;
         }
 
-        protected IDisposable UsingTenantId(int? tenantId)
+        private IDisposable UsingTenantId(int? tenantId)
         {
             var previousTenantId = AbpSession.TenantId;
             AbpSession.TenantId = tenantId;

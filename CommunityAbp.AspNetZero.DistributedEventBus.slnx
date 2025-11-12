@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".github/workflows/publish.yml" />
+    <File Path=".gitignore" />
+    <File Path="global.json" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj" />
+    <Project Path="src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj" />
+    <Project Path="src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CommunityAbp.AspNetZero.DistributedEventBus.Test.Base/CommunityAbp.AspNetZero.DistributedEventBus.Test.Base.csproj" />
+    <Project Path="tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj" />
+  </Folder>
+</Solution>
