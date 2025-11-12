@@ -81,6 +81,10 @@ jobs:
         with:
           name: nuget
           path: ${{ env.NuGetDirectory }}
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          show-progress: false
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
