@@ -4,7 +4,7 @@ Reliable distributed domain events for ABP / AspNet Zero using the Inbox / Outbo
 
 Targets:
 - .NET Standard2.0 (broad compatibility)
-- .NET8 (modern runtime)
+- .NET10 (modern runtime)
 
 ---
 ## IMPORTANT STATUS WARNING
