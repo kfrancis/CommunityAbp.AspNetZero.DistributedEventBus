@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Abp.Events.Bus;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 
@@ -10,6 +11,20 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
 /// </summary>
 public interface IDistributedEventBus : IEventBus, IDisposable
 {
+    Task PublishAsync<TEvent>(
+        TEvent eventData,
+        DistributedEventDispatchMode dispatchMode,
+        bool onUnitOfWorkComplete = true,
+        CancellationToken cancellationToken = default)
+        where TEvent : class;
+
+    Task PublishAsync(
+        Type eventType,
+        object eventData,
+        DistributedEventDispatchMode dispatchMode,
+        bool onUnitOfWorkComplete = true,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     ///     Publishes an event using distributed event bus.
     /// </summary>
@@ -21,6 +36,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     /// </param>
     /// <param name="useOutbox">True to use outbox pattern, false to publish directly</param>
     /// <returns>A task representing the asynchronous operation</returns>
+    [Obsolete("Use the overload accepting DistributedEventDispatchMode.")]
     Task PublishAsync<TEvent>(
         TEvent eventData,
         bool onUnitOfWorkComplete = true,
@@ -38,6 +54,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     /// </param>
     /// <param name="useOutbox">True to use outbox pattern, false to publish directly</param>
     /// <returns>A task representing the asynchronous operation</returns>
+    [Obsolete("Use the overload accepting DistributedEventDispatchMode.")]
     Task PublishAsync(
         Type eventType,
         object eventData,
@@ -47,6 +64,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     /// <summary>
     /// Publish with cancellation token support.
     /// </summary>
+    [Obsolete("Use the overload accepting DistributedEventDispatchMode.")]
     Task PublishAsync<TEvent>(
         TEvent eventData,
         CancellationToken cancellationToken,
@@ -57,6 +75,7 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     /// <summary>
     /// Publish (type based) with cancellation token support.
     /// </summary>
+    [Obsolete("Use the overload accepting DistributedEventDispatchMode.")]
     Task PublishAsync(
         Type eventType,
         object eventData,

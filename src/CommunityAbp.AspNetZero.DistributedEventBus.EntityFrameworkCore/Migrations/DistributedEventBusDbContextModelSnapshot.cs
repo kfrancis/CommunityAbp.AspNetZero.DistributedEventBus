@@ -28,6 +28,16 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
                     .HasMaxLength(100)
                     .HasColumnType("nvarchar(100)");
 
+                b.Property<int>("DispatchMode")
+                    .HasColumnType("int");
+
+                b.Property<long?>("DeliveryCount")
+                    .HasColumnType("bigint");
+
+                b.Property<string>("EntityPath")
+                    .HasMaxLength(260)
+                    .HasColumnType("nvarchar(260)");
+
                 b.Property<byte[]>("EventData")
                     .IsRequired()
                     .HasColumnType("varbinary(max)");
@@ -44,6 +54,10 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
 
                 b.Property<string>("Error")
                     .HasColumnType("nvarchar(max)");
+
+                b.Property<string>("LegacyTypeIdentifier")
+                    .HasMaxLength(500)
+                    .HasColumnType("nvarchar(500)");
 
                 b.Property<string>("MessageId")
                     .IsRequired()
@@ -71,6 +85,10 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
                     .IsRequired()
                     .HasMaxLength(40)
                     .HasColumnType("nvarchar(40)");
+
+                b.Property<string>("SubscriptionName")
+                    .HasMaxLength(260)
+                    .HasColumnType("nvarchar(260)");
 
                 b.HasKey("Id");
 

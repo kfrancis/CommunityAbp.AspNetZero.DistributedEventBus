@@ -18,16 +18,18 @@ public sealed class PollingOutboxSender : IOutboxSender, ITransientDependency
     private readonly AspNetZeroEventBusBoxesOptions _options;
     private readonly IIocResolver _resolver;
     private readonly IEventSerializer _serializer;
+    private readonly IEventTypeRegistry _eventTypes;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
-    public PollingOutboxSender(ILogger<PollingOutboxSender> logger, IDistributedEventBus bus, AspNetZeroEventBusBoxesOptions options, IIocResolver resolver, IEventSerializer serializer)
+    public PollingOutboxSender(ILogger<PollingOutboxSender> logger, IDistributedEventBus bus, AspNetZeroEventBusBoxesOptions options, IIocResolver resolver, IEventSerializer serializer, IEventTypeRegistry eventTypes)
     {
         _logger = logger;
         _bus = bus;
         _options = options;
         _resolver = resolver;
         _serializer = serializer;
+        _eventTypes = eventTypes;
     }
 
     public Task StartAsync(OutboxConfig outboxConfig, CancellationToken cancellationToken = default)
@@ -86,7 +88,7 @@ public sealed class PollingOutboxSender : IOutboxSender, ITransientDependency
 
         try
         {
-            var eventType = _serializer.ResolveType(outgoingEvent.EventName);
+            var eventType = _eventTypes.Resolve(outgoingEvent.EventName) ?? _serializer.ResolveType(outgoingEvent.EventName);
             if (eventType is null)
             {
                 await outbox.MarkFailedAsync(outgoingEvent.Id, "Type not found", cancellationToken);
@@ -100,7 +102,7 @@ public sealed class PollingOutboxSender : IOutboxSender, ITransientDependency
                 return;
             }
 
-            await _bus.PublishAsync(eventType, eventData, cancellationToken, onUnitOfWorkComplete: false, useOutbox: false);
+            await _bus.PublishAsync(eventType, eventData, DistributedEventDispatchMode.Direct, onUnitOfWorkComplete: false, cancellationToken);
             await outbox.MarkSentAsync(outgoingEvent.Id, cancellationToken);
         }
         catch (Exception exception)

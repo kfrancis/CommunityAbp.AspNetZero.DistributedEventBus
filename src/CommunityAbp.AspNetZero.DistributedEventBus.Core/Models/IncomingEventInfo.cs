@@ -92,4 +92,30 @@ public class IncomingEventInfo : IIncomingEventInfo
     {
         return _correlationId;
     }
+
+    /// <summary>
+    /// Broker metadata captured when the message entered the inbox. This is preserved so
+    /// handlers see the same message identity and delivery details after asynchronous
+    /// inbox processing.
+    /// </summary>
+    public DistributedEventMessageContext? MessageContext { get; private set; }
+
+    public virtual IncomingEventInfo SetMessageContext(DistributedEventMessageContext messageContext)
+    {
+        MessageContext = CloneMessageContext(messageContext);
+        return this;
+    }
+
+    internal static DistributedEventMessageContext CloneMessageContext(DistributedEventMessageContext source) => new()
+    {
+        MessageId = source.MessageId,
+        EventName = source.EventName,
+        LegacyTypeIdentifier = source.LegacyTypeIdentifier,
+        EntityPath = source.EntityPath,
+        SubscriptionName = source.SubscriptionName,
+        DeliveryCount = source.DeliveryCount,
+        CorrelationId = source.CorrelationId,
+        DispatchMode = source.DispatchMode,
+        CreatedAtUtc = source.CreatedAtUtc
+    };
 }

@@ -6,16 +6,20 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj'
-      - 'src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj'
-      - 'src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj'
+      - 'src/**'
+      - 'tests/**'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/servicebus-emulator/**'
       - '.github/workflows/publish.yml'
   pull_request:
     branches: [ '*' ]
     paths:
-      - 'src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj'
-      - 'src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj'
-      - 'src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj'
+      - 'src/**'
+      - 'tests/**'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/servicebus-emulator/**'
       - '.github/workflows/publish.yml'
   release:
     types: [ published ]
@@ -69,6 +73,33 @@ jobs:
           path: |
             ${{ env.NuGetDirectory }}/*.nupkg
             ${{ env.NuGetDirectory }}/*.snupkg
+
+  servicebus_emulator_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Start Azure Service Bus emulator
+        run: docker compose -f .github/servicebus-emulator/docker-compose.yml up -d
+      - name: Wait for emulator health
+        run: |
+          for ($i = 0; $i -lt 30; $i++) {
+            try {
+              if ((Invoke-WebRequest http://localhost:5300/health -UseBasicParsing).StatusCode -eq 200) { exit 0 }
+            } catch { }
+            Start-Sleep -Seconds 2
+          }
+          docker compose -f .github/servicebus-emulator/docker-compose.yml logs
+          throw 'Azure Service Bus emulator did not become healthy.'
+      - name: Run Service Bus emulator tests
+        env:
+          AZURE_SERVICEBUS_EMULATOR_CONNECTION: Endpoint=sb://localhost;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;
+        run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --filter 'Category=ServiceBusEmulator'
+      - name: Stop emulator
+        if: always()
+        run: docker compose -f .github/servicebus-emulator/docker-compose.yml down -v
 
   deploy:
     if: github.event_name == 'release'

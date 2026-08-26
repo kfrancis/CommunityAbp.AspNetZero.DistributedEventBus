@@ -30,7 +30,12 @@ public class EfCoreEventInbox : IEventInbox
             EventData = eventInfo.EventData,
             ReceivedAt = eventInfo.CreationTime,
             Status = "Pending",
-            CorrelationId = eventInfo.GetCorrelationId()
+            CorrelationId = eventInfo.GetCorrelationId(),
+            LegacyTypeIdentifier = eventInfo.MessageContext?.LegacyTypeIdentifier,
+            EntityPath = eventInfo.MessageContext?.EntityPath,
+            SubscriptionName = eventInfo.MessageContext?.SubscriptionName,
+            DeliveryCount = eventInfo.MessageContext?.DeliveryCount,
+            DispatchMode = (int)(eventInfo.MessageContext?.DispatchMode ?? DistributedEventDispatchMode.Direct)
         };
         _dbContext.InboxMessages.Add(entity);
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -45,7 +50,20 @@ public class EfCoreEventInbox : IEventInbox
             .Take(maxCount)
             .ToListAsync(cancellationToken);
 
-        return entities.Select(e => new IncomingEventInfo(e.Id, e.MessageId, e.EventName, e.EventData, e.ReceivedAt).SetCorrelationId(e.CorrelationId ?? string.Empty)).ToList();
+        return entities.Select(e => new IncomingEventInfo(e.Id, e.MessageId, e.EventName, e.EventData, e.ReceivedAt)
+            .SetCorrelationId(e.CorrelationId ?? string.Empty)
+            .SetMessageContext(new DistributedEventMessageContext
+            {
+                MessageId = e.MessageId,
+                EventName = e.EventName,
+                LegacyTypeIdentifier = e.LegacyTypeIdentifier,
+                EntityPath = e.EntityPath,
+                SubscriptionName = e.SubscriptionName,
+                DeliveryCount = e.DeliveryCount,
+                CorrelationId = e.CorrelationId,
+                DispatchMode = (DistributedEventDispatchMode)e.DispatchMode,
+                CreatedAtUtc = e.ReceivedAt
+            })).ToList();
     }
 
     public async Task<bool> TryClaimAsync(Guid id, CancellationToken cancellationToken)

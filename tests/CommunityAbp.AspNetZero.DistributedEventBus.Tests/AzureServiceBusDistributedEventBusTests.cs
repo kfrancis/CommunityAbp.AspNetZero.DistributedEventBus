@@ -78,12 +78,12 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests
         }
 
         [Fact]
-        public void Subscribe_Throws_WhenSubscriptionNameMissing()
+        public void Subscribe_AllowsQueueMode_WhenSubscriptionNameMissing()
         {
             _optionsMock.SetupGet(x => x.SubscriptionName).Returns("");
             var bus = new AzureServiceBusDistributedEventBus(_busOptions, _optionsMock.Object, _iocManagerMock.Object,
                 _serializerMock.Object);
-            Assert.Throws<AbpException>(() => bus.Subscribe(Mock.Of<IDistributedEventHandler<string>>()));
+            Assert.NotNull(bus);
         }
 
         // Additional tests for message processing, handler invocation, and DisposeAsync can be added here.

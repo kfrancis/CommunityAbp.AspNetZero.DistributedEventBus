@@ -1,0 +1,20 @@
+services:
+  emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator@sha256:5a96d893b245031740f7d46e0fe5ff282d24b78c4b7d761dd57590f3f010a9b3
+    volumes:
+      - ./config.json:/ServiceBus_Emulator/ConfigFiles/Config.json
+    ports:
+      - "5672:5672"
+      - "5300:5300"
+    environment:
+      SQL_SERVER: mssql
+      MSSQL_SA_PASSWORD: "ServiceBusTest!123"
+      ACCEPT_EULA: Y
+      EMULATOR_HTTP_PORT: 5300
+    depends_on:
+      - mssql
+  mssql:
+    image: mcr.microsoft.com/mssql/server@sha256:d38c2a64812d775f844088e4e44ab33846eefc61157431bf9c8a3943a534c22e
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: "ServiceBusTest!123"

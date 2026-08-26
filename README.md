@@ -8,11 +8,11 @@ Targets:
 
 ---
 ## IMPORTANT STATUS WARNING
-> The EntityFrameworkCore persistence module (`CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore`) is currently INCOMPLETE / NOT PRODUCTION READY. Outbox sending & Inbox processing reliability paths are not finalized. Using `useOutbox: true` will not provide guaranteed store-and-forward semantics. Do NOT rely on the EF module for production durability yet.
+> The EntityFrameworkCore persistence module (`CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore`) is experimental. Outbox sending and inbox processing are covered by integration tests, but production durability still requires application-owned retry, monitoring, and deployment validation.
 >
 > Until completed:
 > - Treat Outbox/Inboxes as experimental.
-> - Prefer direct publish (useOutbox=false) for critical flows.
+> - Prefer `DistributedEventDispatchMode.Direct` for user-facing progress and completion flows.
 > - Expect schema/behavior changes.
 >
 > A compile-time warning is emitted when referencing the EF module.
@@ -30,15 +30,15 @@ Targets:
 - Manual, explicit subscription model (no auto-discovery / auto-subscribe)
 - Test friendly (replace the bus with an in‑memory implementation)
 
-> NOTE: Current Azure implementation publishes directly to Service Bus even when `useOutbox == true` (it first calls base which may persist to an outbox, then sends immediately). If you intend a strict store‑and‑forward flow, adapt that behavior.
+> NOTE: `DistributedEventDispatchMode.Outbox` persists an event without immediately sending it. A configured `IOutboxSender` must later publish it.
 
 ---
 ## Architecture Overview
 ```
 Publisher (Hangfire / API / etc.)
- => IDistributedEventBus.PublishAsync(event, useOutbox?)
- (useOutbox=true) -> Persist to Outbox(s) -> Outbox Sender -> Broker (Azure Service Bus)
- (useOutbox=false) -> Immediate Dispatch -> (local handlers if any) + Direct Broker send (Azure impl)
+ => IDistributedEventBus.PublishAsync(event, dispatchMode)
+ (Outbox) -> Persist to Outbox(s) -> Outbox Sender -> Broker (Azure Service Bus)
+ (Direct) -> Immediate Dispatch -> (local handlers if any) + Direct Broker send (Azure impl)
 
 Azure Service Bus Topic / Queue
  -> Consumer application subscription
@@ -79,7 +79,7 @@ public class UserNotificationEvent : EventData
 
 Publisher (Hangfire):
 ```
-await _bus.PublishAsync(new UserNotificationEvent { UserId = id, Message = "Welcome" }, useOutbox: false);
+await _bus.PublishAsync(new UserNotificationEvent { UserId = id, Message = "Welcome" }, DistributedEventDispatchMode.Direct);
 ```
 (No handler subscription; do NOT reference the SignalR hub assembly.)
 
@@ -216,7 +216,7 @@ public class OrderCreatedHandler : IDistributedEventHandler<OrderCreatedEvent>
 
 ### Publishing
 ```
-await _bus.PublishAsync(new OrderCreatedEvent { OrderId = order.Id, Total = order.Total }, useOutbox: true); // experimental reliability path
+await _bus.PublishAsync(new OrderCreatedEvent { OrderId = order.Id, Total = order.Total }, DistributedEventDispatchMode.Direct);
 ```
 
 ### Manual Subscription
@@ -228,13 +228,13 @@ Unsubscribe via the returned `IDisposable`.
 
 ---
 ## Azure Service Bus Specifics
-- Requires valid `ConnectionString` + `EntityPath` (+ `SubscriptionName` for topics).
-- Messages carry `Subject = typeof(TEvent).FullName` for filtering.
+- Requires valid `ConnectionString` + `EntityPath`; use `EntityKind = Topic` with `SubscriptionName` for topics, or `EntityKind = Queue` without a subscription for queues.
+- Messages carry a stable `[EventName]` logical identifier plus a legacy CLR identifier for rolling-deploy compatibility.
 - If an inbox (`IEventInbox`) is injected into the Azure bus, it will persist incoming messages before handler invocation (experimental when using EF module).
 - Queue mode: set `EntityPath` to queue name and omit `SubscriptionName` (adjust the processor code if needed).
 
 ### Idempotency & Duplicates
-Use Inbox storage (experimental); enforce unique `MessageId` or stable event IDs.
+Use Inbox storage (experimental), or register `IIncomingMessageDeduplicator` for application-owned duplicate suppression keyed by broker `MessageId`.
 
 ---
 ## Testing
@@ -243,7 +243,7 @@ Manual subscription pattern:
 var bus = Resolve<IDistributedEventBus>();
 var handled = false;
 var sub = bus.Subscribe(new OrderCreatedHandler(() => handled = true));
-await bus.PublishAsync(new OrderCreatedEvent { OrderId = Guid.NewGuid() }, useOutbox: false);
+await bus.PublishAsync(new OrderCreatedEvent { OrderId = Guid.NewGuid() }, DistributedEventDispatchMode.Direct);
 Assert.True(handled);
 ```
 
@@ -279,7 +279,7 @@ Assert.True(handled);
 
 ---
 ## Event Naming
-`[EventName]` provides stable logical names; fallback is `FullName`.
+`[EventName]` provides stable logical names; fallback is `FullName`. Register public contract types and legacy aliases in every consumer during a rolling deployment. See [MendMD migration](docs/mendmd-migration.md).
 
 ---
 ## Contributing

@@ -27,6 +27,14 @@ public class InboxMessage
  public string Status { get; set; } = "Pending"; // Pending, Processed, Failed
  [MaxLength(100)]
  public string? CorrelationId { get; set; }
+ [MaxLength(500)]
+ public string? LegacyTypeIdentifier { get; set; }
+ [MaxLength(260)]
+ public string? EntityPath { get; set; }
+ [MaxLength(260)]
+ public string? SubscriptionName { get; set; }
+ public long? DeliveryCount { get; set; }
+ public int DispatchMode { get; set; }
  public string? Error { get; set; }
  public int RetryCount { get; set; }
  [Timestamp]

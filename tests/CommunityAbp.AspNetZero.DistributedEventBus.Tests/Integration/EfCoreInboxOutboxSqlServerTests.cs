@@ -95,5 +95,45 @@ public sealed class EfCoreInboxOutboxSqlServerTests : IAsyncLifetime
         Assert.Null(saved.ProcessingStartedAt);
     }
 
+    [Fact]
+    public async Task Inbox_Persists_Broker_Message_Context()
+    {
+        var eventId = Guid.NewGuid();
+        var receivedAt = DateTime.UtcNow;
+        var messageContext = new DistributedEventMessageContext
+        {
+            MessageId = "broker-message-42",
+            EventName = "jobs.progressed",
+            LegacyTypeIdentifier = typeof(SqlServerEvent).AssemblyQualifiedName,
+            EntityPath = "progress-events",
+            SubscriptionName = "mendmd-web",
+            DeliveryCount = 2,
+            CorrelationId = "correlation-42",
+            DispatchMode = DistributedEventDispatchMode.Direct,
+            CreatedAtUtc = receivedAt
+        };
+
+        await using (var writeContext = _fixture.CreateDbContext())
+        {
+            var inbox = new EfCoreEventInbox(writeContext);
+            await inbox.AddAsync(new IncomingEventInfo(eventId, messageContext.MessageId, messageContext.EventName,
+                    [4, 5, 6], receivedAt)
+                .SetCorrelationId(messageContext.CorrelationId!)
+                .SetMessageContext(messageContext));
+        }
+
+        await using var readContext = _fixture.CreateDbContext();
+        var pending = await new EfCoreEventInbox(readContext).GetPendingAsync(10);
+        var restored = Assert.Single(pending);
+
+        Assert.Equal(messageContext.MessageId, restored.MessageContext?.MessageId);
+        Assert.Equal(messageContext.LegacyTypeIdentifier, restored.MessageContext?.LegacyTypeIdentifier);
+        Assert.Equal(messageContext.EntityPath, restored.MessageContext?.EntityPath);
+        Assert.Equal(messageContext.SubscriptionName, restored.MessageContext?.SubscriptionName);
+        Assert.Equal(messageContext.DeliveryCount, restored.MessageContext?.DeliveryCount);
+        Assert.Equal(messageContext.CorrelationId, restored.MessageContext?.CorrelationId);
+        Assert.Equal(messageContext.DispatchMode, restored.MessageContext?.DispatchMode);
+    }
+
     private sealed class SqlServerEvent;
 }
