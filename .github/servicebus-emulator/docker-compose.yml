@@ -14,7 +14,9 @@ services:
     depends_on:
       - mssql
   mssql:
-    image: mcr.microsoft.com/mssql/server@sha256:d38c2a64812d775f844088e4e44ab33846eefc61157431bf9c8a3943a534c22e
+    # The SQL Server registry does not publish the locally reported manifest digest.
+    # Keep the supported SQL Server 2022 tag; the Service Bus emulator itself remains pinned.
+    image: mcr.microsoft.com/mssql/server:2022-latest
     environment:
       ACCEPT_EULA: Y
       MSSQL_SA_PASSWORD: "ServiceBusTest!123"
