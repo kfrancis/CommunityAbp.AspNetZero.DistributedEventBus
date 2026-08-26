@@ -84,3 +84,11 @@ public interface IDistributedEventBus : IEventBus, IDisposable
     /// </summary>
     void InitializeSubscriptions();
 }
+
+/// <summary>
+/// Dispatches an event to handlers in the current process without publishing it to a transport.
+/// </summary>
+public interface ILocalDistributedEventDispatcher
+{
+    Task DispatchLocalAsync(Type eventType, object eventData, CancellationToken cancellationToken = default);
+}

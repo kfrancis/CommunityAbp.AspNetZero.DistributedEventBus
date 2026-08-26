@@ -12,14 +12,15 @@ public class OutboxMessage
 {
     [Key]
     public Guid Id { get; set; }
-    [Required, MaxLength(200)]
+    [Required, MaxLength(500)]
     public string EventName { get; set; } = string.Empty;
-    [Required, MaxLength(200)]
+    [Required, MaxLength(500)]
     public string EventType { get; set; } = string.Empty;
     [Required]
     public byte[] EventData { get; set; } = Array.Empty<byte>();
     public DateTime CreatedAt { get; set; }
     public DateTime? SentAt { get; set; }
+    public DateTime? ProcessingStartedAt { get; set; }
     [MaxLength(40)]
     public string Status { get; set; } = "Pending"; // Pending, Sent, Failed
     [MaxLength(100)]

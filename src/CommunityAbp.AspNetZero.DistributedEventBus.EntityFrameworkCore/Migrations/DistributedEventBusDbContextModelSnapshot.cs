@@ -34,22 +34,26 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
 
                 b.Property<string>("EventName")
                     .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    .HasMaxLength(500)
+                    .HasColumnType("nvarchar(500)");
 
                 b.Property<string>("EventType")
                     .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    .HasMaxLength(500)
+                    .HasColumnType("nvarchar(500)");
 
                 b.Property<string>("Error")
                     .HasColumnType("nvarchar(max)");
 
                 b.Property<string>("MessageId")
                     .IsRequired()
-                    .HasColumnType("nvarchar(max)");
+                    .HasMaxLength(200)
+                    .HasColumnType("nvarchar(200)");
 
                 b.Property<DateTime?>("ProcessedAt")
+                    .HasColumnType("datetime2");
+
+                b.Property<DateTime?>("ProcessingStartedAt")
                     .HasColumnType("datetime2");
 
                 b.Property<DateTime>("ReceivedAt")
@@ -100,13 +104,13 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
 
                 b.Property<string>("EventName")
                     .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    .HasMaxLength(500)
+                    .HasColumnType("nvarchar(500)");
 
                 b.Property<string>("EventType")
                     .IsRequired()
-                    .HasMaxLength(200)
-                    .HasColumnType("nvarchar(200)");
+                    .HasMaxLength(500)
+                    .HasColumnType("nvarchar(500)");
 
                 b.Property<string>("Error")
                     .HasColumnType("nvarchar(max)");
@@ -118,6 +122,9 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.Migrat
                     .IsConcurrencyToken()
                     .ValueGeneratedOnAddOrUpdate()
                     .HasColumnType("rowversion");
+
+                b.Property<DateTime?>("ProcessingStartedAt")
+                    .HasColumnType("datetime2");
 
                 b.Property<DateTime?>("SentAt")
                     .HasColumnType("datetime2");

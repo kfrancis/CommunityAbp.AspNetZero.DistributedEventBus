@@ -26,8 +26,8 @@ public class AspNetZeroDistributedEventBusModule : AbpModule
         {
             IocManager.Register<IEventSerializer, DefaultEventSerializer>(DependencyLifeStyle.Singleton);
         }
-        IocManager.Register<IOutboxSender, PollingOutboxSender>(DependencyLifeStyle.Singleton);
-        IocManager.Register<IInboxProcessor, PollingInboxProcessor>(DependencyLifeStyle.Singleton);
+        IocManager.Register<IOutboxSender, PollingOutboxSender>(DependencyLifeStyle.Transient);
+        IocManager.Register<IInboxProcessor, PollingInboxProcessor>(DependencyLifeStyle.Transient);
     }
 
     public override void Initialize()

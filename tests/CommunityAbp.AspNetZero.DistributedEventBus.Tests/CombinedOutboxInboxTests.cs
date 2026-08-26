@@ -13,7 +13,7 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests;
 /// </summary>
 public class CombinedOutboxInboxTests : AppTestBase
 {
-    [Fact(Skip = "Outbox feature disabled in test module (EF outbox registration commented out)")]
+    [Fact]
     public async Task Outbox_To_Inbox_Flow_Manual_Should_Dispatch_Once()
     {
         var bus = Resolve<IDistributedEventBus>();
@@ -61,7 +61,9 @@ public class CombinedOutboxInboxTests : AppTestBase
         // Verify inbox pending
         UsingDbContext(ctx => Assert.True(ctx.InboxMessages.Any(m => m.Status == "Pending")));
 
-        // Manually process via bus (no status change yet)
+        Assert.True(await inbox.TryClaimAsync(incoming.Id, CancellationToken.None));
+
+        // Manually dispatch after claiming the inbox event.
         await boxBus.ProcessFromInboxAsync(incoming, options.Inboxes["TestInbox"]);
         Assert.Equal(1, handled);
 

@@ -13,9 +13,9 @@ using System.Collections.Immutable;
 namespace CommunityAbp.AspNetZero.DistributedEventBus.Core;
 
 #if NETSTANDARD2_0
-public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupportsEventBoxes, IDisposable
+public class DistributedEventBusBase : EventBus, IDistributedEventBus, ILocalDistributedEventDispatcher, ISupportsEventBoxes, IDisposable
 #else
-public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupportsEventBoxes, IDisposable, IAsyncDisposable
+public class DistributedEventBusBase : EventBus, IDistributedEventBus, ILocalDistributedEventDispatcher, ISupportsEventBoxes, IDisposable, IAsyncDisposable
 #endif
 {
     private ImmutableDictionary<Type, ImmutableList<Func<object, Task>>> _handlers = ImmutableDictionary<Type, ImmutableList<Func<object, Task>>>.Empty;
@@ -120,19 +120,36 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ISupports
         return null;
     }
 
+    public Task DispatchLocalAsync(Type eventType, object eventData, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return DispatchAsync(eventType, eventData);
+    }
+
     private Task DispatchAsync(Type eventType, object eventData)
     {
-        var collected = new List<Func<object, Task>>();
+        var handlers = new HashSet<Func<object, Task>>();
         var current = eventType;
         while (current != null && current != typeof(object))
         {
-            if (_handlers.TryGetValue(current, out var list) && list.Count > 0) collected.AddRange(list);
+            if (_handlers.TryGetValue(current, out var list) && list.Count > 0)
+            {
+                foreach (var handler in list)
+                {
+                    handlers.Add(handler);
+                }
+            }
             current = current.BaseType;
         }
-        if (collected.Count == 0) return Task.CompletedTask;
-        var distinct = collected.Distinct().ToList();
-        if (distinct.Count == 1) return distinct[0](eventData);
-        return Task.WhenAll(distinct.Select(h => h(eventData)));
+        if (handlers.Count == 0) return Task.CompletedTask;
+        if (handlers.Count == 1) return handlers.First()(eventData);
+        var tasks = new Task[handlers.Count];
+        var index = 0;
+        foreach (var handler in handlers)
+        {
+            tasks[index++] = handler(eventData);
+        }
+        return Task.WhenAll(tasks);
     }
 
     public virtual IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler) where TEvent : class

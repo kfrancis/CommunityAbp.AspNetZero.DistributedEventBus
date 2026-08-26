@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,6 +15,8 @@ public interface IEventOutbox
     Task AddAsync(OutgoingEventInfo outgoingEvent, CancellationToken cancellationToken = default);
     IReadOnlyList<OutgoingEventInfo> GetEvents();
     Task<IEnumerable<OutgoingEventInfo>> GetPendingAsync(int outboxBatchSize, CancellationToken ct);
+    Task<bool> TryClaimAsync(object id, CancellationToken ct);
+    Task<int> RequeueExpiredClaimsAsync(TimeSpan leaseTimeout, CancellationToken ct);
     Task MarkFailedAsync(object id, string v, CancellationToken ct);
     Task MarkSentAsync(object id, CancellationToken ct);
 }

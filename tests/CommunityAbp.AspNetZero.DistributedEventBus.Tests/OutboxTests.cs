@@ -114,6 +114,31 @@ public class OutboxTests : AppTestBase<DistributedEventBusTestModule>
             }
         }
 
+        public Task<bool> TryClaimAsync(object id, CancellationToken ct)
+        {
+            if (id is not Guid guid)
+            {
+                throw new ArgumentException("id must be Guid", nameof(id));
+            }
+
+            lock (_lock)
+            {
+                var state = _states.FirstOrDefault(s => s.Event.Id == guid);
+                if (state is null || state.Status != "Pending")
+                {
+                    return Task.FromResult(false);
+                }
+
+                state.Status = "Processing";
+                return Task.FromResult(true);
+            }
+        }
+
+        public Task<int> RequeueExpiredClaimsAsync(TimeSpan leaseTimeout, CancellationToken ct)
+        {
+            return Task.FromResult(0);
+        }
+
         public Task MarkFailedAsync(object id, string v, CancellationToken ct)
         {
             if (id is Guid guid)

@@ -7,6 +7,7 @@ using Azure.Messaging.ServiceBus.Administration;
 using CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration;
 using CommunityAbp.AspNetZero.DistributedEventBus.Core.Interfaces;
+using CommunityAbp.AspNetZero.DistributedEventBus.Core.Models;
 using CommunityAbp.AspNetZero.DistributedEventBus.Test.Base;
 using Moq;
 
@@ -41,31 +42,39 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Tests
             var bus = new AzureServiceBusDistributedEventBus(_busOptions, _optionsMock.Object, _iocManagerMock.Object,
                 _serializerMock.Object);
             typeof(AzureServiceBusDistributedEventBus)
-                .GetField("_client", BindingFlags.NonPublic | BindingFlags.Instance)
-                .SetValue(bus, _clientMock.Object);
+                .GetField("_sender", BindingFlags.NonPublic | BindingFlags.Instance)
+                .SetValue(bus, senderMock.Object);
 
             await bus.PublishAsync("test-event", useOutbox: false);
             senderMock.Verify(x => x.SendMessageAsync(It.IsAny<ServiceBusMessage>(), It.IsAny<CancellationToken>()),
                 Times.Once);
         }
 
-        [Fact(Skip = "Not working")]
+        [Fact]
         public async Task PublishAsync_DoesNotSend_WhenUsingOutbox()
         {
             var senderMock = new Mock<ServiceBusSender>();
+            var outboxMock = new Mock<IEventOutbox>();
             _clientMock.Setup(x => x.CreateSender(It.IsAny<string>())).Returns(senderMock.Object);
             _serializerMock.Setup(x => x.Serialize(It.IsAny<object>(), It.IsAny<Type>()))
                 .Returns([1, 2, 3]);
+            _busOptions.Outboxes.Configure("test", config =>
+            {
+                config.Selector = type => type == typeof(string);
+                config.Factory = (_, _) => outboxMock.Object;
+            });
 
             var bus = new AzureServiceBusDistributedEventBus(_busOptions, _optionsMock.Object, _iocManagerMock.Object,
                 _serializerMock.Object);
             typeof(AzureServiceBusDistributedEventBus)
-                .GetField("_client", BindingFlags.NonPublic | BindingFlags.Instance)
-                .SetValue(bus, _clientMock.Object);
+                .GetField("_sender", BindingFlags.NonPublic | BindingFlags.Instance)
+                .SetValue(bus, senderMock.Object);
 
             await bus.PublishAsync("test-event", useOutbox: true);
             senderMock.Verify(x => x.SendMessageAsync(It.IsAny<ServiceBusMessage>(), It.IsAny<CancellationToken>()),
                 Times.Never);
+            outboxMock.Verify(x => x.AddAsync(It.IsAny<OutgoingEventInfo>(), It.IsAny<CancellationToken>()),
+                Times.Once);
         }
 
         [Fact]

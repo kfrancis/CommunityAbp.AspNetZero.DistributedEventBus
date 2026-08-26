@@ -13,6 +13,8 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.Core.Configuration
         public TimeSpan InboxPollingInterval { get; set; } = TimeSpan.FromSeconds(2);
         public int OutboxBatchSize { get; set; } = 50;
         public int InboxBatchSize { get; set; } = 50;
+        public int MaxConcurrentEventHandlers { get; set; } = 4;
+        public TimeSpan ProcessingLeaseTimeout { get; set; } = TimeSpan.FromMinutes(5);
 
         public int MaxRetryCount { get; set; } = 5;
         public TimeSpan BaseRetryDelay { get; set; } = TimeSpan.FromSeconds(1);

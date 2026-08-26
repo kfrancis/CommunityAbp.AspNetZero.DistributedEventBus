@@ -12,16 +12,17 @@ public class InboxMessage
 {
  [Key]
  public Guid Id { get; set; }
- [Required]
+  [Required, MaxLength(200)]
  public string MessageId { get; set; } = string.Empty;
- [Required, MaxLength(200)]
+ [Required, MaxLength(500)]
  public string EventName { get; set; } = string.Empty;
- [Required, MaxLength(200)]
+ [Required, MaxLength(500)]
  public string EventType { get; set; } = string.Empty;
  [Required]
  public byte[] EventData { get; set; } = Array.Empty<byte>();
  public DateTime ReceivedAt { get; set; }
- public DateTime? ProcessedAt { get; set; }
+  public DateTime? ProcessedAt { get; set; }
+  public DateTime? ProcessingStartedAt { get; set; }
  [MaxLength(40)]
  public string Status { get; set; } = "Pending"; // Pending, Processed, Failed
  [MaxLength(100)]
