@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
 
@@ -53,27 +53,27 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Abp.EntityFrameworkCore" Version="9.4.*" />
-    <PackageReference Include="DotNet.ReproducibleBuilds" Version="1.2.39">
+    <PackageReference Include="Abp.EntityFrameworkCore" Version="10.5.*" />
+    <PackageReference Include="DotNet.ReproducibleBuilds" Version="2.0.5">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.*">
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.*" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.*">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.*" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MinVer" Version="6.0.0">
+    <PackageReference Include="MinVer" Version="7.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="System.Text.Json" Version="8.0.*" />
+    <PackageReference Include="System.Text.Json" Version="10.0.*" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(Configuration)' == 'Debug'">
