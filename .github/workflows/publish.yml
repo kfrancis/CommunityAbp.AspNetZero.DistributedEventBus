@@ -49,23 +49,38 @@ jobs:
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Fail on wildcard PackageReference versions in src/**
+        run: |
+          $offenders = Get-ChildItem -Path src -Recurse -Filter *.csproj |
+            Select-String -Pattern '<PackageReference\b[^>]*\bVersion="[^"]*\*[^"]*"', '<Version>[^<]*\*[^<]*</Version>'
+          if ($offenders) {
+            $offenders | ForEach-Object { Write-Host "::error file=$($_.Path),line=$($_.LineNumber)::Wildcard PackageReference version: $($_.Line.Trim())" }
+            throw 'Floating (x.y.*) PackageReference versions are not allowed under src/**. Pin explicit minimum versions so the published nuspec floors do not drift.'
+          }
+          Write-Host 'No wildcard PackageReference versions found under src/**.'
       - name: Restore
         run: |
           dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj
           dotnet restore src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj
           dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj
+          dotnet restore tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests.csproj
       - name: Build (Release)
         run: |
           dotnet build src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj --configuration Release --no-restore /clp:ErrorsOnly
           dotnet build src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj --configuration Release --no-restore /clp:ErrorsOnly
           dotnet build tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-restore /clp:ErrorsOnly
+          dotnet build tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests.csproj --configuration Release --no-restore /clp:ErrorsOnly
       - name: Test
         run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj --configuration Release --no-build --filter 'FullyQualifiedName!~TestBase'
+      - name: Test (netstandard2.0 build surface)
+        run: dotnet test tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests.csproj --configuration Release --no-build
       - name: Pack (no build)
         run: |
           mkdir -p ${{ env.NuGetDirectory }}
           dotnet pack src/CommunityAbp.AspNetZero.DistributedEventBus.Core/CommunityAbp.AspNetZero.DistributedEventBus.Core.csproj --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
           dotnet pack src/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus/CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus.csproj --configuration Release --no-build --output ${{ env.NuGetDirectory }} -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg
+      - name: Assert nuspec dependency floors
+        run: ./.github/scripts/Assert-NuspecFloors.ps1 -PackageDirectory '${{ env.NuGetDirectory }}'
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:

@@ -30,6 +30,7 @@
     <!-- MinVer Configuration -->
     <MinVerTagPrefix>v</MinVerTagPrefix>
     <MinVerSkip>false</MinVerSkip>
+    <MinVerMinimumMajorMinor>0.11</MinVerMinimumMajorMinor>
   </PropertyGroup>
 
   <PropertyGroup>

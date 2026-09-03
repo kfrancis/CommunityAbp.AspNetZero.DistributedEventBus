@@ -30,6 +30,7 @@
     <!-- MinVer Configuration -->
     <MinVerTagPrefix>v</MinVerTagPrefix>
     <MinVerSkip>false</MinVerSkip>
+    <MinVerMinimumMajorMinor>0.11</MinVerMinimumMajorMinor>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -66,41 +67,41 @@
     </PackageReference>
   </ItemGroup>
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
-      <PackageReference Include="Abp" Version="10.5.*" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.*" />
+      <PackageReference Include="Abp" Version="10.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
     <PackageReference Include="MinVer" Version="7.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
-    <PackageReference Include="Abp" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.*" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.*" />
+    <PackageReference Include="Abp" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.19" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="9.0.19" />
     <PackageReference Include="MinVer" Version="6.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.7.*" />
+    <PackageReference Include="System.Linq.Dynamic.Core" Version="1.7.3" />
   </ItemGroup>
 
   <ItemGroup>
