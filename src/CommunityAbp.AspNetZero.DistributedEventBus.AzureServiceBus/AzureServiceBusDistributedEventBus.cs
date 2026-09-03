@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Abp;
@@ -14,6 +15,12 @@ using Microsoft.Extensions.Logging;
 
 namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus;
 
+/// <summary>
+///     Azure Service Bus transport for <see cref="IDistributedEventBus"/>.
+///     Registered as a process-wide singleton: one <see cref="ServiceBusClient"/>, one <see cref="ServiceBusSender"/>
+///     and at most one <see cref="ServiceBusProcessor"/> per process. The constructor is cheap and opens no connection;
+///     the SDK connects lazily on first send or on processor start.
+/// </summary>
 #if NETSTANDARD2_0
 public class AzureServiceBusDistributedEventBus : DistributedEventBusBase
 #else
@@ -29,7 +36,9 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
     private readonly ILogger<AzureServiceBusDistributedEventBus>? _logger;
     private readonly object _processorLock = new();
     private readonly ConcurrentDictionary<string, Type> _typesByIdentifier = new(StringComparer.Ordinal);
+    private readonly int _instanceId;
     private ServiceBusProcessor? _processor;
+    private int _disposeState; // 0 = live, 1 = disposing/disposed
 
     public AzureServiceBusDistributedEventBus(
         DistributedEventBusOptions busOptions,
@@ -48,9 +57,31 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
         _inbox = inbox;
         _deduplicator = deduplicator;
         _logger = logger;
+        _instanceId = RuntimeHelpers.GetHashCode(this);
         ValidateOptions(options);
+        // Neither call opens a connection; the AMQP link is established lazily by the SDK.
         _client = new ServiceBusClient(options.ConnectionString);
         _sender = _client.CreateSender(options.EntityPath);
+        _logger?.LogDebug("Created ServiceBusClient for {Namespace} and ServiceBusSender for {EntityPath} (bus instance {InstanceId}).",
+            _client.FullyQualifiedNamespace, options.EntityPath, _instanceId);
+    }
+
+    /// <summary>
+    ///     Upper bound for the synchronous <see cref="Dispose()"/> path to wait for the processor, sender and client to close.
+    /// </summary>
+    protected virtual TimeSpan ShutdownTimeout => TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    ///     The sender and the processor always target the same entity, so every message this instance publishes is
+    ///     delivered back to it by the broker whenever it has a processor; and it only has handlers when it has a processor
+    ///     (<see cref="Subscribe{TEvent}"/> starts one). Local dispatch would therefore always be a duplicate.
+    /// </summary>
+    protected override bool DispatchLocallyOnDirectPublish => false;
+
+    /// <summary>True while a <see cref="ServiceBusProcessor"/> is running for this instance.</summary>
+    public bool HasActiveProcessor
+    {
+        get { lock (_processorLock) { return _processor is not null; } }
     }
 
     public override Task PublishAsync<TEvent>(TEvent eventData, DistributedEventDispatchMode dispatchMode,
@@ -60,6 +91,7 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
     public override async Task PublishAsync(Type eventType, object eventData, DistributedEventDispatchMode dispatchMode,
         bool onUnitOfWorkComplete = true, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
         await base.PublishAsync(eventType, eventData, dispatchMode, onUnitOfWorkComplete, cancellationToken);
         if (dispatchMode == DistributedEventDispatchMode.Outbox) return;
         cancellationToken.ThrowIfCancellationRequested();
@@ -74,6 +106,7 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
     public override IDisposable Subscribe<TEvent>(IDistributedEventHandler<TEvent> handler)
     {
         if (handler is null) throw new ArgumentNullException(nameof(handler));
+        ThrowIfDisposed();
         RegisterEventType(typeof(TEvent));
         var subscription = base.Subscribe(handler);
         try
@@ -114,25 +147,36 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
     {
         lock (_processorLock)
         {
+            ThrowIfDisposed();
             if (_processor is not null) return;
-            _processor = GetEntityKind() == AzureServiceBusEntityKind.Queue
+            var processor = GetEntityKind() == AzureServiceBusEntityKind.Queue
                 ? _client.CreateProcessor(_options.EntityPath, new ServiceBusProcessorOptions { AutoCompleteMessages = false })
                 : _client.CreateProcessor(_options.EntityPath, _options.SubscriptionName!, new ServiceBusProcessorOptions { AutoCompleteMessages = false });
-            _processor.ProcessMessageAsync += ProcessMessageAsync;
-            _processor.ProcessErrorAsync += ProcessErrorAsync;
-            try { _processor.StartProcessingAsync().GetAwaiter().GetResult(); }
+            processor.ProcessMessageAsync += ProcessMessageAsync;
+            processor.ProcessErrorAsync += ProcessErrorAsync;
+            try
+            {
+                // Task.Run keeps the blocking wait off any captured SynchronizationContext (Subscribe may be called from a request thread).
+                Task.Run(() => processor.StartProcessingAsync()).GetAwaiter().GetResult();
+            }
             catch
             {
-                _processor.ProcessMessageAsync -= ProcessMessageAsync;
-                _processor.ProcessErrorAsync -= ProcessErrorAsync;
-                _processor.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                _processor = null;
+                processor.ProcessMessageAsync -= ProcessMessageAsync;
+                processor.ProcessErrorAsync -= ProcessErrorAsync;
+                Task.Run(() => processor.DisposeAsync().AsTask()).GetAwaiter().GetResult();
                 throw;
             }
+            _processor = processor;
+            _logger?.LogDebug("Created and started ServiceBusProcessor for {EntityPath}/{SubscriptionName} (bus instance {InstanceId}).",
+                _options.EntityPath, _options.SubscriptionName ?? "<queue>", _instanceId);
         }
     }
 
-    private static Task ProcessErrorAsync(ProcessErrorEventArgs args) => Task.CompletedTask;
+    private Task ProcessErrorAsync(ProcessErrorEventArgs args)
+    {
+        _logger?.LogWarning(args.Exception, "Azure Service Bus processor error on {EntityPath} during {ErrorSource}.", args.EntityPath, args.ErrorSource);
+        return Task.CompletedTask;
+    }
 
     private async Task ProcessMessageAsync(ProcessMessageEventArgs args)
     {
@@ -224,8 +268,8 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
         foreach (var identifier in new[] { eventName, legacyType })
         {
             if (string.IsNullOrWhiteSpace(identifier)) continue;
-            if (_typesByIdentifier.TryGetValue(identifier, out var cached)) return cached;
-            var resolved = ResolveEventType(identifier);
+            if (_typesByIdentifier.TryGetValue(identifier!, out var cached)) return cached;
+            var resolved = ResolveEventType(identifier!);
             if (resolved is not null) { RegisterEventType(resolved); return resolved; }
         }
         return null;
@@ -256,19 +300,78 @@ public class AzureServiceBusDistributedEventBus : DistributedEventBusBase, IAsyn
         }
     }
 
-#if !NETSTANDARD2_0
-    public async ValueTask DisposeAsync()
+    private void ThrowIfDisposed()
     {
-        if (_processor is not null)
+        if (Volatile.Read(ref _disposeState) != 0) throw new ObjectDisposedException(nameof(AzureServiceBusDistributedEventBus));
+    }
+
+    /// <summary>
+    ///     Synchronously stops the processor and closes the sender and client, waiting at most <see cref="ShutdownTimeout"/>.
+    ///     Exceptions during shutdown are logged and swallowed. Safe to call more than once and after
+    ///     <c>DisposeAsync</c>. Castle Windsor invokes this when the singleton is released at host shutdown.
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && Interlocked.CompareExchange(ref _disposeState, 1, 0) == 0)
         {
-            await _processor.StopProcessingAsync();
-            _processor.ProcessMessageAsync -= ProcessMessageAsync;
-            _processor.ProcessErrorAsync -= ProcessErrorAsync;
-            await _processor.DisposeAsync();
+            try
+            {
+                // Task.Run keeps the shutdown off any captured SynchronizationContext so the bounded wait cannot dead-lock.
+                var shutdown = Task.Run(ShutdownTransportAsync);
+                if (!shutdown.Wait(ShutdownTimeout))
+                    _logger?.LogWarning("Azure Service Bus transport did not shut down within {Timeout}; continuing in the background (bus instance {InstanceId}).", ShutdownTimeout, _instanceId);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning(ex, "Azure Service Bus transport shutdown failed (bus instance {InstanceId}).", _instanceId);
+            }
         }
-        await _sender.DisposeAsync();
-        await _client.DisposeAsync();
+        base.Dispose(disposing);
+    }
+
+#if !NETSTANDARD2_0
+    /// <summary>
+    ///     Asynchronously stops the processor and closes the sender and client. Safe to call more than once and after
+    ///     <see cref="Dispose()"/>.
+    /// </summary>
+    public override async ValueTask DisposeAsync()
+    {
+        if (Interlocked.CompareExchange(ref _disposeState, 1, 0) == 0)
+        {
+            try { await ShutdownTransportAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger?.LogWarning(ex, "Azure Service Bus transport shutdown failed (bus instance {InstanceId}).", _instanceId); }
+        }
+        // _disposeState is already 1, so this only releases the in-process handler tables.
         Dispose();
     }
 #endif
+
+    private async Task ShutdownTransportAsync()
+    {
+        ServiceBusProcessor? processor;
+        lock (_processorLock)
+        {
+            processor = _processor;
+            _processor = null;
+        }
+
+        if (processor is not null)
+        {
+            try { await processor.StopProcessingAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger?.LogWarning(ex, "Failed to stop ServiceBusProcessor for {EntityPath} (bus instance {InstanceId}).", _options.EntityPath, _instanceId); }
+            processor.ProcessMessageAsync -= ProcessMessageAsync;
+            processor.ProcessErrorAsync -= ProcessErrorAsync;
+            try { await processor.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { _logger?.LogWarning(ex, "Failed to dispose ServiceBusProcessor for {EntityPath} (bus instance {InstanceId}).", _options.EntityPath, _instanceId); }
+            _logger?.LogDebug("Disposed ServiceBusProcessor for {EntityPath} (bus instance {InstanceId}).", _options.EntityPath, _instanceId);
+        }
+
+        try { await _sender.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex) { _logger?.LogWarning(ex, "Failed to dispose ServiceBusSender for {EntityPath} (bus instance {InstanceId}).", _options.EntityPath, _instanceId); }
+        _logger?.LogDebug("Disposed ServiceBusSender for {EntityPath} (bus instance {InstanceId}).", _options.EntityPath, _instanceId);
+
+        try { await _client.DisposeAsync().ConfigureAwait(false); }
+        catch (Exception ex) { _logger?.LogWarning(ex, "Failed to dispose ServiceBusClient for {Namespace} (bus instance {InstanceId}).", _client.FullyQualifiedNamespace, _instanceId); }
+        _logger?.LogDebug("Disposed ServiceBusClient for {Namespace} (bus instance {InstanceId}).", _client.FullyQualifiedNamespace, _instanceId);
+    }
 }

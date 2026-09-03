@@ -31,7 +31,9 @@ namespace CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus
                 // Enforce validation (throws) when attempting to actually use Azure Service Bus.
                 ValidateOptions(options);
 
-                Configuration.ReplaceService<IDistributedEventBus, AzureServiceBusDistributedEventBus>(DependencyLifeStyle.Transient);
+                // Singleton: one ServiceBusClient/Sender/Processor per process. Transient instances each opened their own AMQP
+                // connection and were never disposed by the container, which exhausted the namespace connection quota.
+                Configuration.ReplaceService<IDistributedEventBus, AzureServiceBusDistributedEventBus>(DependencyLifeStyle.Singleton);
 
                 IocManager.IocContainer.Register(
                     Component.For<IAzureServiceBusOptions>().Instance(options).LifestyleSingleton()

@@ -232,6 +232,8 @@ Unsubscribe via the returned `IDisposable`.
 - Messages carry a stable `[EventName]` logical identifier plus a legacy CLR identifier for rolling-deploy compatibility.
 - If an inbox (`IEventInbox`) is injected into the Azure bus, it will persist incoming messages before handler invocation (experimental when using EF module).
 - Queue mode: set `EntityPath` to queue name and omit `SubscriptionName` (adjust the processor code if needed).
+- **Lifetime (v0.11.0+):** the bus is registered as a singleton: one `ServiceBusClient`, one `ServiceBusSender`, at most one `ServiceBusProcessor` per process. Do not override the lifetime. `Dispose()` / `DisposeAsync()` release the connection and are idempotent.
+- **No in-process echo (v0.11.0+):** a `Direct` publish from the Azure bus does not invoke local handlers; the broker copy does, exactly once, with `MessageId`, `EntityPath`, `SubscriptionName` and `DeliveryCount` in `IDistributedEventContextAccessor.Current`. Handlers do not need to filter out echoes. See [docs/singleton-bus-and-local-dispatch.md](docs/singleton-bus-and-local-dispatch.md).
 
 ### Idempotency & Duplicates
 Use Inbox storage (experimental), or register `IIncomingMessageDeduplicator` for application-owned duplicate suppression keyed by broker `MessageId`.

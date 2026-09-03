@@ -61,7 +61,9 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ILocalDis
 
         if (dispatchMode == DistributedEventDispatchMode.Direct)
         {
-            await DispatchAsync(eventType, eventData, NewContext(eventType, eventName, dispatchMode), cancellationToken);
+            var dispatchLocally = DispatchLocallyOnDirectPublish;
+            activity?.SetTag("distributed_eventbus.local_dispatch", dispatchLocally);
+            if (dispatchLocally) await DispatchAsync(eventType, eventData, NewContext(eventType, eventName, dispatchMode), cancellationToken);
             return;
         }
         if (_options.Outboxes.Count == 0) throw new InvalidOperationException("No outboxes configured while dispatch mode is Outbox.");
@@ -160,6 +162,18 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ILocalDis
         await DispatchLocalAsync(type, eventData);
     }
 
+    /// <summary>
+    ///     Controls whether a <see cref="DistributedEventDispatchMode.Direct"/> publish invokes the handlers registered on
+    ///     this instance. The transport-less base bus returns <c>true</c>. A transport that delivers a copy of every
+    ///     published message back to the same process (for example a Service Bus topic subscription or queue that this
+    ///     instance also consumes) overrides this to <c>false</c> so handlers run exactly once, from the broker copy,
+    ///     with real broker metadata in <see cref="IDistributedEventContextAccessor.Current"/>.
+    /// </summary>
+    protected virtual bool DispatchLocallyOnDirectPublish => true;
+
+    /// <summary>True once <see cref="Dispose()"/> has run.</summary>
+    protected bool IsDisposed => _disposed;
+
     protected Type? ResolveEventType(string identifier) => _eventTypes.Resolve(identifier) ?? _serializer.ResolveType(identifier);
     protected string GetEventName(Type eventType) { _eventTypes.Register(eventType); return _eventTypes.GetEventName(eventType); }
     protected IDistributedEventContextAccessor ContextAccessor => _contextAccessor;
@@ -219,7 +233,7 @@ public class DistributedEventBusBase : EventBus, IDistributedEventBus, ILocalDis
     }
     public void Dispose() { Dispose(true); GC.SuppressFinalize(this); }
 #if !NETSTANDARD2_0
-    public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
+    public virtual ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
 #endif
 
     private sealed class SubscriptionEntry(Type eventType, object handler, IDisposable subscription)

@@ -32,3 +32,22 @@ Handlers can inject `IDistributedEventContextAccessor` to read the broker messag
 ## Security and rollout
 
 Keep `AzureServiceBus:ConnectionString` in user secrets, Key Vault, or deployment secret configuration—not checked-in appsettings. Rotate any previously committed live credentials. Deploy consumers with aliases first, then publishers with stable names; verify traces for `distributed-eventbus.*`, message IDs, entity path, and handler duration before retiring aliases.
+
+## v0.11.0
+
+Two consumer-side workarounds become unnecessary and should be removed from both hosts (Web.Mvc and Web.Hangfire):
+
+1. **Remove the Singleton lifetime override.** `AzureDistributedEventServiceBusModule` now registers
+   `IDistributedEventBus` as `DependencyLifeStyle.Singleton` itself. Any host module that re-registered the bus
+   (for example `Configuration.ReplaceService<IDistributedEventBus, AzureServiceBusDistributedEventBus>(DependencyLifeStyle.Singleton)`)
+   can drop that line. One `ServiceBusClient` per process is guaranteed by the package; the transient-per-injection
+   leak that produced `ConnectionsQuotaExceeded` is gone.
+2. **Remove echo filtering from handlers.** A `Direct` publish no longer dispatches to in-process handlers on the Azure
+   bus, so handlers fire exactly once, from the broker copy. Delete guards such as
+   `if (string.IsNullOrEmpty(contextAccessor.Current?.EntityPath)) return;`. `EntityPath`, `SubscriptionName`,
+   `MessageId` and `DeliveryCount` are always populated inside a handler.
+
+Web.Hangfire (publish-only) keeps one client and one sender and never starts a processor. Web.Mvc (topic
+`distributed-events`, subscription `mendmd-web`) keeps one client, one sender and one processor. Enable `Debug` logging
+for `CommunityAbp.AspNetZero.DistributedEventBus.AzureServiceBus` to confirm one `Created ServiceBusClient` line per
+process. Details: [singleton-bus-and-local-dispatch.md](singleton-bus-and-local-dispatch.md).

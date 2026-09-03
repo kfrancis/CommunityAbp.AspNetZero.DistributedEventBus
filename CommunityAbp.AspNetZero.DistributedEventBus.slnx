@@ -12,6 +12,7 @@
     <Project Path="src/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore/CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests/CommunityAbp.AspNetZero.DistributedEventBus.NetStandard.Tests.csproj" />
     <Project Path="tests/CommunityAbp.AspNetZero.DistributedEventBus.Test.Base/CommunityAbp.AspNetZero.DistributedEventBus.Test.Base.csproj" />
     <Project Path="tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests/CommunityAbp.AspNetZero.DistributedEventBus.Tests.csproj" />
   </Folder>
