@@ -98,6 +98,9 @@ jobs:
       - uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Add AspNetZero NuGet source
+        run: dotnet nuget add source "${{ secrets.ASPNETZERO_NUGET_URL }}" -n aspnetzero
+      - name: Setup .NET
       - name: Start Azure Service Bus emulator
         run: docker compose -f .github/servicebus-emulator/docker-compose.yml up -d
       - name: Wait for emulator health
