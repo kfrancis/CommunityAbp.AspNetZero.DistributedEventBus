@@ -2,7 +2,30 @@
 
 All notable changes to this project are documented here. Versions are produced by MinVer from `v*` git tags.
 
+## Versioning Strategy (v0.11.0+)
+
+Starting with v0.11.0, this project maintains **two independent release lines**:
+
+1. **net10.0 track** — targets **ABP 11.3.x** (AspNetZero 15.4.0+), published to **AspNetZero licensed feed only**.
+   - Microsoft.* packages on the .NET 10.0.x line
+   - Requires consumer to configure the AspNetZero feed
+
+2. **.NETStandard2.0 track** — targets **ABP 9.0.0** (broadest compatibility), published to **nuget.org**.
+   - Microsoft.* packages on the 9.x line
+   - Works with AspNetZero 12.x–14.x
+
+**Same NuGet package** (by ID) contains both assets with different dependency floors per TFM. Consumers targeting a given TFM only restore and use the dependencies for that TFM.
+
+---
+
 ## v0.11.0
+
+### Packaging & Versioning
+
+- **Dual-track release**: net10.0 now targets ABP 11.3.0 (AspNetZero feed only), while .NETStandard2.0 remains on ABP 9.0.0 (nuget.org).
+- **Dependency floors**: net10.0 now declares `Abp >= 11.3.0`; .NETStandard2.0 declares `Abp >= 9.0.0`.
+- Microsoft.Extensions.\* 10.0.x for net10.0; 9.x for netstandard2.0.
+- Consumers of net10.0 assets MUST configure the AspNetZero NuGet feed (see README).
 
 ### Behavioral changes
 
@@ -31,14 +54,6 @@ All notable changes to this project are documented here. Versions are produced b
 - Processor errors are logged at Warning (previously swallowed silently).
 - New tag `distributed_eventbus.local_dispatch = true|false` on the `distributed-eventbus.publish` activity.
 - New `AzureServiceBusDistributedEventBus.HasActiveProcessor` property.
-
-### Packaging
-
-- Floating `x.y.*` package versions were replaced with explicit minimums so the published nuspec floors stop drifting
-  upward at pack time. net10.0 floors: Abp 10.3.0, Abp.EntityFrameworkCore 10.3.0, Microsoft.EntityFrameworkCore.\*
-  10.0.11, Microsoft.Extensions.\* 10.0.11, System.Text.Json 10.0.11, System.Linq.Dynamic.Core 1.7.3,
-  Azure.Messaging.ServiceBus 7.20.2. netstandard2.0 stays on Abp 9.0.0 and Microsoft.Extensions.\* 9.0.19.
-- CI fails when any `PackageReference` under `src/**` uses a wildcard version, and asserts the packed nuspec floors.
 
 ### Unchanged
 

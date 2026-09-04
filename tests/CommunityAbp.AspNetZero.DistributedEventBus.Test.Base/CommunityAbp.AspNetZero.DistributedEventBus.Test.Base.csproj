@@ -10,8 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Abp" Version="10.5.*" />
-    <PackageReference Include="Abp.TestBase" Version="10.5.*" />
+    <PackageReference Include="Abp" Version="11.3.0" />
+    <PackageReference Include="Abp.TestBase" Version="11.3.0" />
     <PackageReference Include="Castle.Windsor.MsDependencyInjection" Version="6.0.0" />
     <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
