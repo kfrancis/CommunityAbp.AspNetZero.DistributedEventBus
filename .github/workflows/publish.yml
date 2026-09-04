@@ -45,6 +45,8 @@ jobs:
         with:
           fetch-depth: 0
           show-progress: false
+      - name: Add AspNetZero NuGet source
+        run: dotnet nuget add source "${{ secrets.ASPNETZERO_NUGET_URL }}" -n aspnetzero
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
