@@ -18,7 +18,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $expected = @{
     'CommunityAbp.AspNetZero.DistributedEventBus.Core' = @{
         'net10.0' = @{
-            'Abp'                                                   = '10.3.0'
+            'Abp'                                                   = '11.3.0'
             'Microsoft.Extensions.Caching.Memory'                   = '10.0.11'
             'Microsoft.Extensions.Configuration'                    = '10.0.11'
             'Microsoft.Extensions.Configuration.Abstractions'       = '10.0.11'
@@ -43,7 +43,7 @@ $expected = @{
     }
     'CommunityAbp.AspNetZero.DistributedEventBus.EntityFrameworkCore' = @{
         'net10.0' = @{
-            'Abp.EntityFrameworkCore'                   = '10.3.0'
+            'Abp.EntityFrameworkCore'                   = '11.3.0'
             'Microsoft.EntityFrameworkCore'             = '10.0.11'
             'Microsoft.EntityFrameworkCore.Relational'  = '10.0.11'
             'Microsoft.EntityFrameworkCore.SqlServer'   = '10.0.11'
