@@ -3,8 +3,25 @@
 Reliable distributed domain events for ABP / AspNet Zero using the Inbox / Outbox pattern and (optionally) Azure Service Bus.
 
 Targets:
-- .NET Standard2.0 (broad compatibility)
-- .NET10 (modern runtime)
+- .NET Standard 2.0 (ABP 9.0.0, broad compatibility)
+- .NET 10 (ABP 11.3.x, modern runtime)
+
+---
+## ⚠️ IMPORTANT: AspNetZero Licensed NuGet Feed Required
+
+**Consumers of these packages MUST add the AspNetZero licensed NuGet feed.** ABP 11.3.x packages are published only to the AspNetZero licensed feed (`https://nuget.aspnetzero.com`), not to nuget.org.
+
+### Setup (local / CI)
+**Local development:**
+```
+dotnet nuget add source "https://nuget.aspnetzero.com/<key>/v3/index.json" -n aspnetzero
+```
+
+**GitHub Actions CI:** Add repository secret `ASPNETZERO_NUGET_URL` with the feed URL + key, then include:
+```yaml
+- name: Add AspNetZero NuGet source
+  run: dotnet nuget add source "${{ secrets.ASPNETZERO_NUGET_URL }}" -n aspnetzero
+```
 
 ---
 ## IMPORTANT STATUS WARNING

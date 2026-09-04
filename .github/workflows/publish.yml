@@ -45,6 +45,8 @@ jobs:
         with:
           fetch-depth: 0
           show-progress: false
+      - name: Add AspNetZero NuGet source
+        run: dotnet nuget add source "${{ secrets.ASPNETZERO_NUGET_URL }}" -n aspnetzero
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
@@ -93,9 +95,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/setup-dotnet@v5
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
         with:
           global-json-file: global.json
+      - name: Add AspNetZero NuGet source
+        run: dotnet nuget add source "${{ secrets.ASPNETZERO_NUGET_URL }}" -n aspnetzero
       - name: Start Azure Service Bus emulator
         run: docker compose -f .github/servicebus-emulator/docker-compose.yml up -d
       - name: Wait for emulator health
